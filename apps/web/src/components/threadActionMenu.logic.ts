@@ -7,6 +7,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
  * remains data-driven.
  */
 export type ThreadActionMenuId =
+  | "open-in-split"
   | "new-thread-on-branch"
   | "filter-by-project"
   | "project-settings"
@@ -90,6 +91,8 @@ export interface ThreadActionMenuState {
   readonly isRegeneratingTitle: boolean;
   /** Archive rejects a thread with an attached provider, so disable it here rather than let the action fail. */
   readonly isRunning: boolean;
+  /** Offers "Open in split" (fork: split chat panes). Omitted on surfaces without it. */
+  readonly canOpenInSplit?: boolean;
   readonly supports: {
     readonly settlement: boolean;
     /** Server understands thread.auto-settle.set. */
@@ -123,6 +126,9 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
+    ...(state.canOpenInSplit
+      ? [{ id: "open-in-split" as const, label: "Open in split", icon: "panel-right" }]
+      : []),
     ...(state.branch
       ? [
           {
