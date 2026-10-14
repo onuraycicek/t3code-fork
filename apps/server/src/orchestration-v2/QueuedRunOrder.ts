@@ -1,3 +1,4 @@
+import { forkWakeFirst } from "../fork/queueHold.ts";
 import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
@@ -22,6 +23,7 @@ export function queuedRunsInDeliveryOrder(
     .filter((run) => run.status === "queued")
     .toSorted(
       (left, right) =>
+        forkWakeFirst(projection, left, right) ||
         (left.queuePosition ?? left.ordinal) - (right.queuePosition ?? right.ordinal) ||
         left.ordinal - right.ordinal,
     );
