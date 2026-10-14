@@ -66,6 +66,8 @@ interface RightPanelActionsInput {
   readonly gitCwd: string | null;
   readonly activeProjectCwd: string | null;
   readonly onDiffPanelOpen: (() => void) | undefined;
+  /** Fork: false for a background split pane, which must not answer preview actions. */
+  readonly inputOwner?: boolean;
 }
 
 /**
@@ -319,15 +321,16 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   });
+  const inputOwner = input.inputOwner ?? true;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the preview action bus to toggle the preview panel
   useEffect(
     () =>
-      embedded
+      embedded || !inputOwner
         ? undefined
         : subscribePreviewAction((action) => {
             if (action === "toggle-panel") togglePreviewPanelStable();
           }),
-    [embedded, togglePreviewPanelStable],
+    [embedded, inputOwner, togglePreviewPanelStable],
   );
 
   const shortcuts = {

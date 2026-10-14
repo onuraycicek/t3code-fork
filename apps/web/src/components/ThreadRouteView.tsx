@@ -12,6 +12,8 @@ import ChatView from "./ChatView";
 import { BackgroundThreadContext, HiddenThreadContext } from "./chat/backgroundThread";
 import { Button } from "./ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
+import { ChatPanes } from "../fork/ChatPanes";
+import { useChatPaneRoute } from "../fork/useChatPaneRoute";
 import { SidebarInset } from "./ui/sidebar";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
@@ -162,9 +164,12 @@ export function ThreadRouteView({
     }
   }, [background, bootstrapComplete, environmentHasAnyThreads, navigate, renderState, target]);
 
+  const paneRoot = useChatPaneRoute(target, renderState);
   let view: React.ReactNode = null;
   let redirect: React.ReactNode = null;
-  if (target.kind === "draft") {
+  if (paneRoot !== null) {
+    view = <ChatPanes root={paneRoot} />;
+  } else if (target.kind === "draft") {
     if (
       draftSession &&
       hiddenKeys.has(

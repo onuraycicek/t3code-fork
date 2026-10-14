@@ -135,6 +135,7 @@ import {
   type TurnDiffSection,
 } from "@t3tools/client-runtime/state/thread-repositories";
 import { useOpenLink } from "../browser/useOpenLink";
+import { useChatPane } from "../fork/chatPaneContext";
 
 type DiffThemeType = "light" | "dark";
 const AUTOMATIC_BASE_REF = "__automatic_base_ref__";
@@ -266,7 +267,9 @@ export default function DiffPanel({
   // The open commit menu keeps the list it opened with, so rows do not move under the pointer.
   const [openCommitMenu, setOpenCommitMenu] = useState<ReviewBranchCommitsResult | null>(null);
 
-  const routeThreadRef = useThreadRouteRef();
+  const routeParamsThreadRef = useThreadRouteRef();
+  // Fork: inside a split pane, show that pane's thread, not the route's.
+  const routeThreadRef = useChatPane()?.threadRef ?? routeParamsThreadRef;
   const activeThreadId = routeThreadRef?.threadId ?? null;
   const serverThread = useQuietThreadShell(routeThreadRef);
   // A new thread has no server thread yet; its draft names the checkout to diff.

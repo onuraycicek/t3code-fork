@@ -6,6 +6,7 @@ import { m, type MessageResolver } from "../i18n/messages";
 
 export type ThreadActionMenuId =
   | "find"
+  | "open-in-split"
   | "new-thread-on-branch"
   | "filter-by-project"
   | "turn-into-project"
@@ -115,6 +116,8 @@ export interface ThreadActionMenuState {
   readonly isRunning: boolean;
   /** The server marks unread against the latest run's completion, so in-flight runs cannot be. */
   readonly hasCompletedRun: boolean;
+  /** Offers "Open in split" (fork: split chat panes). Omitted on surfaces without it. */
+  readonly canOpenInSplit?: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
@@ -172,6 +175,9 @@ export function buildThreadActionMenuItems(
   const items: ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> = [
     ...(state.canFind
       ? [{ id: "find" as const, label: resolve(msg("Find in thread")), icon: "text-search" }]
+      : []),
+    ...(state.canOpenInSplit
+      ? [{ id: "open-in-split" as const, label: "Open in split", icon: "panel-right" }]
       : []),
     ...(state.branch
       ? [
