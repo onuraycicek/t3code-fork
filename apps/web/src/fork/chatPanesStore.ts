@@ -62,6 +62,7 @@ const PersistedSchema = Schema.Struct({
   root: Schema.NullOr(NodeSchema),
   focusedPaneId: Schema.NullOr(Schema.String),
   history: Schema.Array(Schema.String),
+  draftTabKeys: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 const decodePersisted = Schema.decodeUnknownSync(PersistedSchema);
 
@@ -109,10 +110,17 @@ interface ChatPanesState {
   /** Thread keys, most recently used first. */
   history: readonly string[];
   /**
+   * Keys of tabs opened from a draft route. They are dropped when neither the
+   * draft session nor a server thread backs them any more (see ChatPanes).
+   */
+  draftTabKeys: readonly string[];
+  /**
    * Mirrors the route into the layout: focus the tab showing it, else add it as
    * a new tab of the focused pane (creating the layout when there is none).
    */
-  syncRouteThread: (threadRef: ScopedThreadRef) => void;
+  syncRouteThread: (threadRef: ScopedThreadRef, options?: { draft?: boolean }) => void;
+  /** Stops tracking `threadKeys` as draft tabs (promoted or no longer open). */
+  untrackDraftTabs: (threadKeys: readonly string[]) => void;
   focusPane: (paneId: ChatPaneId) => void;
   /** Shows the tab `threadKey` of `paneId` and focuses the pane. */
   activateTab: (paneId: ChatPaneId, threadKey: string) => void;
@@ -175,14 +183,26 @@ export const useChatPanesStore = create<ChatPanesState>()(
       root: null,
       focusedPaneId: null,
       history: [],
-      syncRouteThread: (threadRef) =>
+      draftTabKeys: [],
+      untrackDraftTabs: (threadKeys) =>
+        set((state) => {
+          const drop = new Set(threadKeys);
+          if (!state.draftTabKeys.some((key) => drop.has(key))) return state;
+          return { draftTabKeys: state.draftTabKeys.filter((key) => !drop.has(key)) };
+        }),
+      syncRouteThread: (threadRef, options) =>
         set((state) => {
           const key = scopedThreadKey(threadRef);
+          const draftTabKeys =
+            options?.draft && !state.draftTabKeys.includes(key)
+              ? [...state.draftTabKeys, key]
+              : state.draftTabKeys;
           if (!state.root) {
             return {
               root: createLeaf(SEED_PANE_ID, [threadRef], key),
               focusedPaneId: SEED_PANE_ID,
               history: visit(state.history, key),
+              draftTabKeys,
             };
           }
           const existing = findLeafByThreadKey(state.root, key);
@@ -194,11 +214,12 @@ export const useChatPanesStore = create<ChatPanesState>()(
           if (
             root === state.root &&
             state.focusedPaneId === target.id &&
-            history === state.history
+            history === state.history &&
+            draftTabKeys === state.draftTabKeys
           ) {
             return state;
           }
-          return { root, focusedPaneId: target.id, history };
+          return { root, focusedPaneId: target.id, history, draftTabKeys };
         }),
       focusPane: (paneId) =>
         set((state) =>
@@ -338,7 +359,7 @@ export const useChatPanesStore = create<ChatPanesState>()(
           const root = setPaneRatio(state.root, splitId, clampPaneRatio(ratio));
           return root === state.root ? state : { root };
         }),
-      reset: () => set({ root: null, focusedPaneId: null, history: [] }),
+      reset: () => set({ root: null, focusedPaneId: null, history: [], draftTabKeys: [] }),
     }),
     {
       name: "t3code:fork-chat-panes:v1",
@@ -351,17 +372,24 @@ export const useChatPanesStore = create<ChatPanesState>()(
         root: state.root,
         focusedPaneId: state.focusedPaneId,
         history: state.history,
+        draftTabKeys: state.draftTabKeys,
       }),
       merge: (persisted, current) => {
         try {
-          const { root, focusedPaneId, history } = decodePersisted(persisted);
+          const { root, focusedPaneId, history, draftTabKeys } = decodePersisted(persisted);
           const focused =
             root && focusedPaneId && findLeaf(root, focusedPaneId)
               ? focusedPaneId
               : root
                 ? collectLeaves(root)[0]!.id
                 : null;
-          return { ...current, root, focusedPaneId: focused, history };
+          return {
+            ...current,
+            root,
+            focusedPaneId: focused,
+            history,
+            draftTabKeys: draftTabKeys ?? [],
+          };
         } catch {
           return current;
         }
