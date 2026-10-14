@@ -3681,7 +3681,11 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
 
   const configuredMacPasskeySigning =
-    options.platform === "mac" && options.signed
+    // Fork: T3CODE_DESKTOP_SKIP_MAC_PASSKEYS signs without the passkey entitlement,
+    // whose provisioning profile only the upstream team can issue.
+    options.platform === "mac" &&
+    options.signed &&
+    process.env.T3CODE_DESKTOP_SKIP_MAC_PASSKEYS !== "true"
       ? yield* Effect.try({
           try: () => resolveMacPasskeySigningConfiguration(loadRepoEnv({ repoRoot })),
           catch: MacPasskeySigningConfigurationResolutionError.fromCause,
