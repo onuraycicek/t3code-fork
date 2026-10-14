@@ -1,6 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { scopeThreadRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { SidebarListItem, SidebarSection } from "../components/Sidebar.logic";
 import type { SidebarProjectSnapshot } from "../sidebarProjectGrouping";
@@ -14,6 +14,7 @@ import { useForkPrefsStore } from "./forkPrefsStore";
 import {
   buildSidebarProjectGroupItems,
   buildSidebarProjectThreadGroups,
+  mergeProjectOrder,
 } from "./sidebarProjectGroups.logic";
 
 type GroupableThread = Pick<EnvironmentThreadShell, "environmentId" | "id" | "projectId">;
@@ -46,6 +47,23 @@ export function useSidebarProjectGrouping<TThread extends GroupableThread>(input
   const { activeThreads, projectGroups, projectGroupByScopeKey, routeThreadKey } = input;
   const enabled = useForkPrefsStore((state) => state.sidebarProjectGroupingEnabled);
   const active = enabled && !input.projectFilterActive;
+  const savedProjectOrder = useForkPrefsStore((state) => state.sidebarProjectOrder);
+  const setSavedProjectOrder = useForkPrefsStore((state) => state.setSidebarProjectOrder);
+  // Manual order: seeded once from the order shown at that moment, new
+  // projects are appended at the bottom and saved so they stay put.
+  const projectOrder = useMemo(
+    () =>
+      mergeProjectOrder(
+        savedProjectOrder,
+        projectGroups.map((group) => group.projectKey),
+      ),
+    [projectGroups, savedProjectOrder],
+  );
+  useEffect(() => {
+    if (active && projectGroups.length > 0 && projectOrder !== savedProjectOrder) {
+      setSavedProjectOrder(projectOrder);
+    }
+  }, [active, projectGroups.length, projectOrder, savedProjectOrder, setSavedProjectOrder]);
   const projectExpandedById = useUiStateStore((store) => store.projectExpandedById);
   const setProjectExpanded = useUiStateStore((store) => store.setProjectExpanded);
   const clearSelection = useThreadSelectionStore((state) => state.clearSelection);
@@ -78,7 +96,7 @@ export function useSidebarProjectGrouping<TThread extends GroupableThread>(input
             threads: activeThreads,
             projectKeyOf: projectKeyOfThread,
             threadKeyOf,
-            projectOrder: projectGroups.map((group) => group.projectKey),
+            projectOrder,
             isExpanded: (projectKey) => {
               const project = projectGroupByScopeKey.get(projectKey);
               return (
@@ -95,8 +113,8 @@ export function useSidebarProjectGrouping<TThread extends GroupableThread>(input
       activeThreads,
       projectExpandedById,
       projectGroupByScopeKey,
-      projectGroups,
       projectKeyOfThread,
+      projectOrder,
       routeThreadKey,
       showAllProjectKeys,
     ],
