@@ -94,6 +94,7 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { ForkSettingsRows } from "../../fork/ForkSettingsRows";
 import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
 
 const RESPONSE_STREAMING_MODE_LABELS: Record<ResponseStreamingMode, string> = {
@@ -965,6 +966,8 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        <ForkSettingsRows />
 
         <SettingsRow
           {...searchableSetting("working-shelf")}
