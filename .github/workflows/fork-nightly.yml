@@ -95,6 +95,18 @@ jobs:
             fi
           fi
 
+      # pnpm's content-addressed store; installs become mostly hard links.
+      - name: Locate pnpm store
+        id: pnpm_store
+        run: echo "path=$(corepack pnpm@11.10.0 store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm_store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
       - name: Resolve conflicts with Claude
         if: steps.rebase.outputs.conflict == 'true'
         uses: anthropics/claude-code-action@v1
@@ -190,7 +202,38 @@ jobs:
         with:
           node-version: 24
 
+      - name: Locate pnpm store
+        id: pnpm_store
+        run: echo "path=$(corepack pnpm@11.10.0 store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm_store.outputs.path }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-${{ runner.os }}-
+
+      # Electron and electron-builder download their binaries on every build.
+      - name: Cache Electron downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
+
+      # The Rust resource monitor only changes with its own sources; reuse the
+      # binary and skip both the toolchain install and the cargo build.
+      - name: Cache resource monitor
+        id: resource_monitor
+        uses: actions/cache@v4
+        with:
+          path: native/resource-monitor/target/aarch64-apple-darwin/release/t3-resource-monitor
+          key: resource-monitor-aarch64-apple-darwin-${{ hashFiles('native/resource-monitor/Cargo.lock', 'native/resource-monitor/Cargo.toml', 'native/resource-monitor/src/**') }}
+
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.resource_monitor.outputs.cache-hit != 'true'
         with:
           targets: aarch64-apple-darwin
 
@@ -214,6 +257,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           T3CODE_DESKTOP_SKIP_MAC_PASSKEYS: "true"
           T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+          T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: ${{ steps.resource_monitor.outputs.cache-hit == 'true' }}
         run: |
           key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           printf '%s' "$APPLE_API_KEY_CONTENT" > "$key_path"
