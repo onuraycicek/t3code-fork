@@ -110,6 +110,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } f
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { useThreadHasUnsentDraft } from "../../composerDraftStore";
+import { SidebarCompactThreadRow } from "../../fork/SidebarCompactThreadRow";
 
 // The fields thread rows show. Provider status pushes refresh `checkedAt`,
 // status and auth on every provider; leaving those out keeps each
@@ -1232,6 +1233,60 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     );
   }
 
+  if (props.hideProjectLabel) {
+    return (
+      <SidebarCompactThreadRow
+        threadKey={threadKey}
+        liProps={{ ...sortableRootProps, ...fileDropHandlers }}
+        rowProps={{
+          ref: rowRef,
+          role: "button",
+          tabIndex: 0,
+          "aria-label": accessibility.label,
+          "aria-current": accessibility.current,
+          "aria-busy": isRegeneratingTitle || undefined,
+          className: rowSurfaceClassName,
+          onClick: handleClick,
+          onDoubleClick: handleDoubleClick,
+          onKeyDown: handleKeyDown,
+          onContextMenu: handleContextMenu,
+        }}
+        tooltipDisabled={snoozeMenuOpen || !!sortable?.isDragging}
+        tooltip={detailsTooltip}
+        accessibleTitle={accessibleTitle}
+        renameInput={isRenaming && canOperateThread ? title : null}
+        title={thread.title}
+        isActive={props.isActive}
+        isUnread={isUnread}
+        isWoke={isWoke}
+        needsInput={status === "input"}
+        receded={shouldRecede}
+        statusIcon={topStatus?.icon === "done" || topStatus?.icon == null ? null : topStatus.icon}
+        statusClassName={topStatus?.className}
+        draftIndicator={draftIndicator}
+        timeLabel={<RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />}
+        onDiscardDraft={hasUnsentDraft ? handleDiscardDraftClick : undefined}
+        snoozeOpen={snoozeMenuOpen}
+        snoozeButton={
+          showSnoozeButton ? (
+            <SnoozeMenuButton
+              open={snoozeMenuOpen}
+              onOpenChange={setSnoozeMenuOpen}
+              onSnooze={handleSnoozePreset}
+              timestampFormat={props.timestampFormat}
+            />
+          ) : null
+        }
+        onSettle={props.settlementSupported ? handleSettleClick : undefined}
+        onSettlePointerDown={handleActionPointerDown}
+        dragBadge={dragDestination}
+        dragging={!!sortable?.isDragging}
+        sweeping={props.sweepAction !== null}
+        jumpHint={props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
+      />
+    );
+  }
+
   const diff = latestRunDiff(thread);
 
   return (
@@ -1241,7 +1296,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
       {...(fileDropHandlers ?? {})}
       className={cn(
         "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
-        props.hideProjectLabel && "[contain-intrinsic-size:auto_54px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1265,21 +1319,16 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           }
         >
           {accessibleTitle}
-          <div
-            className={cn(
-              "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
-              props.hideProjectLabel && "h-[3.375rem]",
-            )}
-          >
+          <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
-              {props.project && !props.hideProjectLabel ? (
+              {props.project ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
               {/* Left of the status slot, the pin would slide when hover swaps the
                 label for the wider row controls. */}
               {pinIndicator}
-              {props.projectDisplayName && !props.hideProjectLabel ? (
+              {props.projectDisplayName ? (
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
@@ -1288,8 +1337,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 >
                   {props.projectDisplayName}
                 </span>
-              ) : props.hideProjectLabel ? (
-                title
               ) : (
                 <span className="flex-1" />
               )}
@@ -1433,8 +1480,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               )}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className={cn("mt-1 flex min-w-0", props.hideProjectLabel && "sr-only")}>
-              {props.hideProjectLabel ? null : title}
+            <div className="mt-1 flex min-w-0">
+              {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
