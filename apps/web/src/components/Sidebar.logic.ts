@@ -34,6 +34,12 @@ import { isLatestRunSettled } from "../session-logic";
 import { observeIntersection } from "../lib/observeIntersection";
 import { deadlineAfter, deadlineStore } from "@t3tools/client-runtime/clock";
 import { useDeadlinePassed } from "../hooks/useDeadline";
+import {
+  isSidebarProjectListItem,
+  sidebarProjectListItemId,
+  withProjectGroupedActiveOrder,
+  type SidebarProjectListItem,
+} from "../fork/sidebarProjectItems";
 
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
@@ -194,10 +200,17 @@ export function sidebarMarkerId(marker: SidebarListMarker): string {
 }
 
 export type SidebarListItem =
-  | { readonly kind: "thread"; readonly key: string; readonly section: SidebarSection }
-  | { readonly kind: "marker"; readonly marker: SidebarListMarker };
+  | {
+      readonly kind: "thread";
+      readonly key: string;
+      readonly section: SidebarSection;
+      readonly projectKey?: string;
+    }
+  | { readonly kind: "marker"; readonly marker: SidebarListMarker }
+  | SidebarProjectListItem;
 
 export function sidebarListItemId(item: SidebarListItem): string {
+  if (isSidebarProjectListItem(item)) return sidebarProjectListItemId(item);
   return item.kind === "thread" ? item.key : sidebarMarkerId(item.marker);
 }
 
@@ -244,10 +257,15 @@ export function resolveSidebarDropTarget(
         item.marker === "settled-header"
       )
         break;
-    } else if (currentSection === "pinned") pinnedOrder.push(item.key);
+    } else if (item.kind !== "thread") continue;
+    else if (currentSection === "pinned") pinnedOrder.push(item.key);
     else activeOrder.push(item.key);
   }
-  return { section, pinnedOrder, activeOrder };
+  return withProjectGroupedActiveOrder(items, moved, overIndex, activeKey, {
+    section,
+    pinnedOrder,
+    activeOrder,
+  });
 }
 
 type SidebarThreadDropPlan =
