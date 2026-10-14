@@ -37,6 +37,7 @@ jobs:
       sha: ${{ steps.publish.outputs.sha }}
       migrations: ${{ steps.publish.outputs.migrations }}
       resolved_by_claude: ${{ steps.publish.outputs.resolved_by_claude }}
+      notes: ${{ steps.notes.outputs.notes }}
     steps:
       # A fine-grained token (this repo only: contents + workflows). The default
       # GITHUB_TOKEN may not push commits that touch .github/workflows, and
@@ -178,6 +179,25 @@ jobs:
           migrations="$(git diff --name-only --diff-filter=A "$OLD_BASE" upstream/main -- apps/server/src/persistence/Migrations | tr '\n' ' ')"
           echo "migrations=$migrations" >> "$GITHUB_OUTPUT"
 
+      # Release body: upstream nightlies' "What's Changed" items since the
+      # previous fork release, then new fork changes (shown in the app's update
+      # popover).
+      - name: Release notes
+        id: notes
+        if: steps.publish.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          notes="$(.github/fork/release-notes.sh "$GITHUB_REPOSITORY" pingdotgg/t3code \
+            "${{ steps.rebase.outputs.old_base }}" "${{ steps.publish.outputs.sha }}" \
+            "${{ steps.publish.outputs.resolved_by_claude }}")"
+          printf '%s\n' "$notes"
+          {
+            echo "notes<<FORK_NOTES_EOF"
+            printf '%s\n' "$notes"
+            echo "FORK_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       # Upstream workflows come along with every rebase; only this one may run.
       - name: Disable upstream workflows
         if: always()
@@ -279,21 +299,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
-          MIGRATIONS: ${{ needs.sync.outputs.migrations }}
-          RESOLVED_BY_CLAUDE: ${{ needs.sync.outputs.resolved_by_claude }}
+          NOTES: ${{ needs.sync.outputs.notes }}
         run: |
-          {
-            echo "Fork nightly built from \`${{ needs.sync.outputs.sha }}\` (upstream main + fork commits)."
-            if [ "$RESOLVED_BY_CLAUDE" = "true" ]; then
-              echo
-              echo "Conflicts or broken checks were fixed by Claude in this run; see the workflow log."
-            fi
-            if [ -n "$MIGRATIONS" ]; then
-              echo
-              echo "**New upstream database migrations:** $MIGRATIONS"
-              echo "Do not switch back to an older official build until it includes them."
-            fi
-          } > "$RUNNER_TEMP/notes.md"
+          printf '%s\n' "$NOTES" > "$RUNNER_TEMP/notes.md"
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
             --prerelease \
             --target "${{ needs.sync.outputs.sha }}" \
