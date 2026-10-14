@@ -14,7 +14,6 @@ import {
 import { createPortal } from "react-dom";
 
 import {
-  buildCycleOrder,
   collectLeaves,
   dropPreviewRect,
   resolveDraftTabCleanup,
@@ -23,14 +22,12 @@ import {
   leafActiveThread,
   resolvePaneDropZone,
   resolveTabDropIndex,
-  stepCycleIndex,
-  touchHistory,
   type ChatPaneId,
   type ChatPaneLeaf,
   type ChatPaneNode,
   type PaneEdge,
 } from "./chatPanes.logic";
-import { freezeChatPaneHistory, useChatPanesStore } from "./chatPanesStore";
+import { useChatPanesStore } from "./chatPanesStore";
 import { SidebarVisibleThreads } from "./SidebarVisibleThreads";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { cn, isMacPlatform } from "../lib/utils";
@@ -43,7 +40,7 @@ import { ProjectFavicon } from "../components/ProjectFavicon";
 import { resolveThreadStatusPill } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
-import { ChatPaneProvider } from "./chatPaneContext";
+import { ChatPaneProvider, PaneComposerScope } from "./chatPaneContext";
 import {
   draftRouteIdForTab,
   useDraftIdByRef,
@@ -235,14 +232,11 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
     [closeTabs],
   );
 
-  // Ctrl+Tab walk state: the frozen recency order and where the walk stands.
-  const cycleRef = useRef<{ order: string[]; index: number } | null>(null);
-
   // Keyboard. Mod+\ splits right, Mod+Shift+\ splits down, Mod+Alt+W closes the
   // focused pane, Mod+Alt+Arrow moves focus through the panes, Mod+Shift+W
   // closes the active tab, Ctrl+1..9 (Alt+1..9 off macOS, where Ctrl+digit is
-  // taken) jumps to a tab of the focused pane, Ctrl+Tab / Ctrl+Shift+Tab walk
-  // the tabs of all panes in most-recently-used order.
+  // taken) jumps to a tab of the focused pane, Ctrl+Tab / Ctrl+Shift+Tab move to
+  // the next / previous tab of the focused pane (wrapping; never another pane).
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || isCommandPaletteOpen()) return;
@@ -257,25 +251,12 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
       if (event.key === "Tab" && event.ctrlKey && !event.metaKey && !event.altKey) {
         event.preventDefault();
         event.stopPropagation();
-        if (event.repeat || !store.root) return;
-        let walk = cycleRef.current;
-        if (!walk) {
-          const current = focusedLeaf.activeKey;
-          const order = buildCycleOrder(
-            store.root,
-            current ? touchHistory(store.history, current) : store.history,
-          );
-          if (order.length < 2) return;
-          walk = { order, index: current ? Math.max(order.indexOf(current), 0) : 0 };
-          cycleRef.current = walk;
-          freezeChatPaneHistory(true);
-        }
-        walk.index = stepCycleIndex(walk.index, walk.order.length, event.shiftKey ? -1 : 1);
-        const key = walk.order[walk.index]!;
-        const target = findLeafByThreadKey(store.root, key);
-        if (!target) return;
-        store.activateTab(target.id, key);
-        openThread(target.tabs.find((tab) => scopedThreadKey(tab) === key) ?? null);
+        const keys = focusedLeaf.tabs.map((tab) => scopedThreadKey(tab));
+        if (keys.length < 2) return;
+        const current = focusedLeaf.activeKey ? keys.indexOf(focusedLeaf.activeKey) : -1;
+        const step = event.shiftKey ? -1 : 1;
+        const next = keys[(Math.max(current, 0) + step + keys.length) % keys.length]!;
+        activateTab(focusedLeaf.id, next);
         return;
       }
 
@@ -326,30 +307,7 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [activateTab, closePane, closeTabs, focusPane, leaves, openThread, splitPane]);
-
-  // Releasing Ctrl (or losing the window) ends a Ctrl+Tab walk and makes the
-  // landing tab the most recent one.
-  useEffect(() => {
-    const endWalk = () => {
-      const walk = cycleRef.current;
-      if (!walk) return;
-      cycleRef.current = null;
-      freezeChatPaneHistory(false);
-      const key = walk.order[walk.index];
-      if (key) useChatPanesStore.getState().touch(key);
-    };
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (event.key === "Control") endWalk();
-    };
-    window.addEventListener("keyup", onKeyUp, true);
-    window.addEventListener("blur", endWalk);
-    return () => {
-      window.removeEventListener("keyup", onKeyUp, true);
-      window.removeEventListener("blur", endWalk);
-      endWalk();
-    };
-  }, []);
+  }, [activateTab, closePane, closeTabs, focusPane, leaves, splitPane]);
 
   const startTabDrag = useCallback(
     (threadKey: string, sourcePaneId: ChatPaneId, event: ReactPointerEvent<HTMLElement>) => {
@@ -739,25 +697,29 @@ const PaneLeaf = memo(function PaneLeaf({
       >
         {activeRef && draftView && draftId ? (
           <ChatPaneProvider key={leaf.activeKey} value={{ focused, threadRef: activeRef }}>
-            <ChatView
-              key={viewKey}
-              draftId={draftId}
-              environmentId={activeRef.environmentId}
-              threadId={activeRef.threadId}
-              routeKind="draft"
-              reserveTitleBarControlInset={edges.top && edges.left}
-            />
+            <PaneComposerScope focused={focused}>
+              <ChatView
+                key={viewKey}
+                draftId={draftId}
+                environmentId={activeRef.environmentId}
+                threadId={activeRef.threadId}
+                routeKind="draft"
+                reserveTitleBarControlInset={edges.top && edges.left}
+              />
+            </PaneComposerScope>
           </ChatPaneProvider>
         ) : activeRef && threadUsable ? (
           // Only the active tab mounts a chat; keyed so switching tabs resets it.
           <ChatPaneProvider key={leaf.activeKey} value={{ focused, threadRef: activeRef }}>
-            <ChatView
-              key={viewKey}
-              environmentId={activeRef.environmentId}
-              threadId={activeRef.threadId}
-              routeKind="server"
-              reserveTitleBarControlInset={edges.top && edges.left}
-            />
+            <PaneComposerScope focused={focused}>
+              <ChatView
+                key={viewKey}
+                environmentId={activeRef.environmentId}
+                threadId={activeRef.threadId}
+                routeKind="server"
+                reserveTitleBarControlInset={edges.top && edges.left}
+              />
+            </PaneComposerScope>
           </ChatPaneProvider>
         ) : (
           <EmptyPanePicker
