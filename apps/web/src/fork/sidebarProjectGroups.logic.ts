@@ -68,6 +68,55 @@ export function buildSidebarProjectThreadGroups<TThread>(input: {
 }
 
 /**
+ * Manual project order: the saved order first, then projects it does not know
+ * yet, appended in the given (current) order. Saved keys that are not present
+ * right now (filtered out, still loading) keep their place so they come back
+ * where the user left them.
+ */
+export function mergeProjectOrder(
+  saved: readonly string[],
+  current: readonly string[],
+): readonly string[] {
+  const known = new Set(saved);
+  const added = current.filter((key) => !known.has(key));
+  return added.length === 0 ? saved : [...saved, ...added];
+}
+
+/**
+ * Move `key` so it sits at `toIndex` among the visible keys (counted without
+ * `key` itself). Keys that are not visible keep their relative slots: the
+ * visible keys are re-laid into the slots the visible keys already occupy.
+ * Returns the order unchanged when the move is a no-op.
+ */
+export function moveProjectKey(
+  order: readonly string[],
+  visible: readonly string[],
+  key: string,
+  toIndex: number,
+): readonly string[] {
+  const full = mergeProjectOrder(order, visible);
+  const visibleSet = new Set(visible);
+  const rest = visible.filter((candidate) => candidate !== key);
+  const clamped = Math.max(0, Math.min(toIndex, rest.length));
+  const next = [...rest.slice(0, clamped), key, ...rest.slice(clamped)];
+  let cursor = 0;
+  const result = full.map((entry) => (visibleSet.has(entry) ? next[cursor++]! : entry));
+  return result.every((entry, index) => entry === full[index]) && full === order ? order : result;
+}
+
+/**
+ * Where a dragged project header lands: the index of the first group whose
+ * vertical midpoint lies below the pointer (groups.length = after the last).
+ */
+export function projectDropIndex(
+  groups: readonly { readonly top: number; readonly bottom: number }[],
+  pointerY: number,
+): number {
+  const index = groups.findIndex((group) => pointerY < (group.top + group.bottom) / 2);
+  return index === -1 ? groups.length : index;
+}
+
+/**
  * The list items of the grouped active section: per project a header, the
  * visible rows, and a "Show more" row. `rows` holds one thread item per active
  * thread (each carrying its projectKey), in canonical order.
