@@ -1,3 +1,4 @@
+import { forkWakeFirst } from "../fork/queueHold.ts";
 import type { OrchestrationV2Run, OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 
 export function isAutomaticCompletionRun(
@@ -25,6 +26,7 @@ export function queuedRunsInDeliveryOrder(
         Number(automaticCompletionMessageIds.has(left.userMessageId));
       return (
         deliveryPriority ||
+        forkWakeFirst(projection, left, right) ||
         (left.queuePosition ?? left.ordinal) - (right.queuePosition ?? right.ordinal) ||
         left.ordinal - right.ordinal
       );
