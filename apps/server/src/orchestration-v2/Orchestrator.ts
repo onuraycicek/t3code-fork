@@ -174,6 +174,7 @@ import * as RunExecutionService from "./RunExecutionService.ts";
 import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { ProviderSwitchServiceV2 } from "./ProviderSwitchService.ts";
 import { isAutomaticCompletionRun, queuedRunsInDeliveryOrder } from "./QueuedRunOrder.ts";
+import { forkQueueHold } from "../fork/queueHold.ts";
 import { isRuntimePolicyAboveCeilingError, RuntimePolicyV2 } from "./RuntimePolicy.ts";
 import {
   endOrphanedNativeSubagent,
@@ -1683,6 +1684,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (isRuntimeModeAbove(projection.thread.runtimeMode, runtimeModeCeiling?.maxRuntimeMode)) {
         return;
       }
+      if (yield* forkQueueHold(projection, queuedRun)) return; // fork
       // Failed worktree creation would run queued work in the project checkout; wait for the user.
       const failedRun = latestExecutedRun(projection.runs);
       const failureClass =
