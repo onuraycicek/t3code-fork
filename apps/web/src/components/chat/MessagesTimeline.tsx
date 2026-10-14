@@ -1,3 +1,4 @@
+import { ResponseHandoffActions } from "../../fork/ResponseHandoffActions";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { shallow } from "zustand/vanilla/shallow";
 import {
@@ -2766,6 +2767,11 @@ function AssistantMessageMeta({
       {projectedItem?.item.type === "assistant_message" ? (
         <AssistantForkButton projectedItem={projectedItem} />
       ) : null}
+      <ResponseHandoffActions
+        item={projectedItem?.item}
+        threadRef={ctx.threadRef}
+        text={message.text}
+      />
       {!message.streaming && (
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
