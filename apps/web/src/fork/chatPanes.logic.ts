@@ -3,10 +3,15 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 
 /**
  * Pure helpers for the split chat layout: a binary tree of splits whose leaves
- * each show one server thread, or nothing yet (an empty pane waiting for a
- * thread). Modeled on Orca's tab-group layout tree: `horizontal` puts the two
- * children side by side, `vertical` stacks them, and `ratio` is the share of
- * the axis given to `first`.
+ * are tab groups. Each leaf holds server-thread tabs (one thread is open in at
+ * most one tab of the window) and shows its active tab, or nothing yet (an empty
+ * pane waiting for a thread). Modeled on Orca's tab-group layout tree:
+ * `horizontal` puts the two children side by side, `vertical` stacks them, and
+ * `ratio` is the share of the axis given to `first`.
+ *
+ * Recency is a window-wide list of thread keys (most recent first), kept next to
+ * the tree; it picks the tab that takes over when one closes and feeds the
+ * Ctrl+Tab switcher.
  */
 
 export type ChatPaneId = string;
@@ -17,8 +22,10 @@ export type PaneDropZone = PaneEdge | "center";
 export interface ChatPaneLeaf {
   readonly kind: "leaf";
   readonly id: ChatPaneId;
-  /** Null while the pane is empty and offers a thread picker. */
-  readonly threadRef: ScopedThreadRef | null;
+  /** Open tabs in strip order. Empty while the pane offers a thread picker. */
+  readonly tabs: readonly ScopedThreadRef[];
+  /** Thread key of the shown tab; null only when `tabs` is empty. */
+  readonly activeKey: string | null;
 }
 
 export interface ChatPaneSplit {
@@ -59,17 +66,41 @@ export function findLeaf(node: ChatPaneNode, id: ChatPaneId): ChatPaneLeaf | nul
   return found?.kind === "leaf" ? found : null;
 }
 
-/** The pane showing `threadRef`, if any. */
+export function createLeaf(
+  id: ChatPaneId,
+  tabs: readonly ScopedThreadRef[] = [],
+  activeKey?: string | null,
+): ChatPaneLeaf {
+  const resolved =
+    activeKey && tabs.some((tab) => scopedThreadKey(tab) === activeKey)
+      ? activeKey
+      : tabs[0]
+        ? scopedThreadKey(tabs[0])
+        : null;
+  return { kind: "leaf", id, tabs, activeKey: resolved };
+}
+
+/** The thread the pane shows, if any. */
+export function leafActiveThread(leaf: ChatPaneLeaf): ScopedThreadRef | null {
+  if (leaf.activeKey === null) return null;
+  return leaf.tabs.find((tab) => scopedThreadKey(tab) === leaf.activeKey) ?? null;
+}
+
+/** The pane holding a tab for `threadKey`, if any. */
+export function findLeafByThreadKey(node: ChatPaneNode, threadKey: string): ChatPaneLeaf | null {
+  return (
+    collectLeaves(node).find((leaf) =>
+      leaf.tabs.some((tab) => scopedThreadKey(tab) === threadKey),
+    ) ?? null
+  );
+}
+
+/** The pane holding a tab for `threadRef`, if any. */
 export function findLeafByThread(
   node: ChatPaneNode,
   threadRef: ScopedThreadRef,
 ): ChatPaneLeaf | null {
-  const key = scopedThreadKey(threadRef);
-  return (
-    collectLeaves(node).find(
-      (leaf) => leaf.threadRef !== null && scopedThreadKey(leaf.threadRef) === key,
-    ) ?? null
-  );
+  return findLeafByThreadKey(node, scopedThreadKey(threadRef));
 }
 
 function edgeToSplit(edge: PaneEdge): { direction: SplitDirection; side: "first" | "second" } {
@@ -142,16 +173,6 @@ export function findSiblingLeaf(root: ChatPaneNode, paneId: ChatPaneId): ChatPan
   return findSiblingLeaf(root.first, paneId) ?? findSiblingLeaf(root.second, paneId);
 }
 
-export function setLeafThread(
-  root: ChatPaneNode,
-  paneId: ChatPaneId,
-  threadRef: ScopedThreadRef | null,
-): ChatPaneNode {
-  return mapTree(root, (node) =>
-    node.id === paneId && node.kind === "leaf" ? { ...node, threadRef } : undefined,
-  );
-}
-
 export function setPaneRatio(root: ChatPaneNode, splitId: ChatPaneId, ratio: number): ChatPaneNode {
   const clamped = clampPaneRatio(ratio);
   return mapTree(root, (node) =>
@@ -161,22 +182,6 @@ export function setPaneRatio(root: ChatPaneNode, splitId: ChatPaneId, ratio: num
         : { ...node, ratio: clamped }
       : undefined,
   );
-}
-
-/** Swaps what two panes show, keeping the layout itself. */
-export function swapLeafThreads(
-  root: ChatPaneNode,
-  aId: ChatPaneId,
-  bId: ChatPaneId,
-): ChatPaneNode {
-  const a = findLeaf(root, aId);
-  const b = findLeaf(root, bId);
-  if (!a || !b || a.id === b.id) return root;
-  return mapTree(root, (node) => {
-    if (node.id === a.id) return { ...a, threadRef: b.threadRef };
-    if (node.id === b.id) return { ...b, threadRef: a.threadRef };
-    return undefined;
-  });
 }
 
 /**
@@ -197,22 +202,10 @@ export function movePane(
   return splitPane(without, targetId, edge, source, splitId);
 }
 
-/** Every pane's thread is still showable; empty panes always are. */
-export function pruneMissingThreads(
-  root: ChatPaneNode,
-  exists: (threadRef: ScopedThreadRef) => boolean,
-): ChatPaneNode {
-  return mapTree(root, (node) =>
-    node.kind === "leaf" && node.threadRef !== null && !exists(node.threadRef)
-      ? { ...node, threadRef: null }
-      : undefined,
-  );
-}
-
 /**
  * Where a drop lands on a pane, Orca style: the outer 20% of the width splits
- * left/right, the outer 20% of the height splits top/bottom, the rest replaces
- * the pane's content. `headerHeight` keeps the pane's own strip out of the
+ * left/right, the outer 20% of the height splits top/bottom, the rest joins the
+ * pane's tabs. `headerHeight` keeps the pane's own strip out of the
  * top/bottom bands.
  */
 export function resolvePaneDropZone(
@@ -257,4 +250,187 @@ export function dropPreviewRect(
     case "center":
       return { left, top, width, height };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Tabs
+// ---------------------------------------------------------------------------
+
+export const THREAD_HISTORY_LIMIT = 100;
+
+/** Moves `threadKey` to the front of a recency list. */
+export function touchHistory(history: readonly string[], threadKey: string): readonly string[] {
+  if (history[0] === threadKey) return history;
+  return [threadKey, ...history.filter((key) => key !== threadKey)].slice(0, THREAD_HISTORY_LIMIT);
+}
+
+function replaceLeaf(root: ChatPaneNode, leaf: ChatPaneLeaf): ChatPaneNode {
+  return mapTree(root, (node) => (node.id === leaf.id ? leaf : undefined));
+}
+
+/**
+ * The tab that takes over after `removedIndex` closed: the most recently used
+ * remaining tab of the pane, else the neighbor that slid into its place.
+ */
+export function pickActiveAfterRemoval(
+  remaining: readonly ScopedThreadRef[],
+  removedIndex: number,
+  history: readonly string[],
+): string | null {
+  if (remaining.length === 0) return null;
+  const keys = new Set(remaining.map((tab) => scopedThreadKey(tab)));
+  const recent = history.find((key) => keys.has(key));
+  if (recent) return recent;
+  const neighbor = remaining[Math.min(removedIndex, remaining.length - 1)];
+  return neighbor ? scopedThreadKey(neighbor) : null;
+}
+
+/** Makes `threadKey` the shown tab of `paneId` (no-op if the pane lacks it). */
+export function activateTab(
+  root: ChatPaneNode,
+  paneId: ChatPaneId,
+  threadKey: string,
+): ChatPaneNode {
+  const leaf = findLeaf(root, paneId);
+  if (!leaf || leaf.activeKey === threadKey) return root;
+  if (!leaf.tabs.some((tab) => scopedThreadKey(tab) === threadKey)) return root;
+  return replaceLeaf(root, { ...leaf, activeKey: threadKey });
+}
+
+/**
+ * Adds `threadRef` as a tab of `paneId` (at `index`, default the end) and makes
+ * it active. A tab already in that pane is just activated; one open in another
+ * pane is not touched here (callers detach it first).
+ */
+export function insertTab(
+  root: ChatPaneNode,
+  paneId: ChatPaneId,
+  threadRef: ScopedThreadRef,
+  index?: number,
+): ChatPaneNode {
+  const leaf = findLeaf(root, paneId);
+  if (!leaf) return root;
+  const key = scopedThreadKey(threadRef);
+  if (leaf.tabs.some((tab) => scopedThreadKey(tab) === key)) {
+    return activateTab(root, paneId, key);
+  }
+  const at =
+    index === undefined ? leaf.tabs.length : Math.max(0, Math.min(index, leaf.tabs.length));
+  const tabs = [...leaf.tabs.slice(0, at), threadRef, ...leaf.tabs.slice(at)];
+  return replaceLeaf(root, { ...leaf, tabs, activeKey: key });
+}
+
+/** Removes a tab; the pane stays even when it ends up empty. */
+export function removeTab(
+  root: ChatPaneNode,
+  threadKey: string,
+  history: readonly string[],
+): ChatPaneNode {
+  const leaf = findLeafByThreadKey(root, threadKey);
+  if (!leaf) return root;
+  const index = leaf.tabs.findIndex((tab) => scopedThreadKey(tab) === threadKey);
+  const tabs = leaf.tabs.filter((tab) => scopedThreadKey(tab) !== threadKey);
+  const activeKey =
+    leaf.activeKey === threadKey
+      ? pickActiveAfterRemoval(
+          tabs,
+          index,
+          history.filter((key) => key !== threadKey),
+        )
+      : leaf.activeKey;
+  return replaceLeaf(root, { ...leaf, tabs, activeKey });
+}
+
+/**
+ * Closes a tab. A pane left empty closes too, unless it is the only pane,
+ * which stays as an empty picker.
+ */
+export function closeTab(
+  root: ChatPaneNode,
+  threadKey: string,
+  history: readonly string[],
+): ChatPaneNode {
+  const leaf = findLeafByThreadKey(root, threadKey);
+  if (!leaf) return root;
+  const next = removeTab(root, threadKey, history);
+  const emptied = findLeaf(next, leaf.id);
+  if (emptied && emptied.tabs.length === 0) return removePane(next, leaf.id) ?? next;
+  return next;
+}
+
+/** Index in the pane's strip where a drop at `clientX` inserts, given tab midpoints. */
+export function resolveTabDropIndex(midpoints: readonly number[], clientX: number): number {
+  const index = midpoints.findIndex((mid) => clientX < mid);
+  return index < 0 ? midpoints.length : index;
+}
+
+/**
+ * Moves a tab into `targetId`'s strip at `index` (an index into the strip as
+ * it looks before the move). A source pane left empty closes.
+ */
+export function moveTabToPane(
+  root: ChatPaneNode,
+  threadKey: string,
+  targetId: ChatPaneId,
+  index: number | undefined,
+  history: readonly string[],
+): ChatPaneNode {
+  const source = findLeafByThreadKey(root, threadKey);
+  const target = findLeaf(root, targetId);
+  if (!source || !target) return root;
+  const ref = source.tabs.find((tab) => scopedThreadKey(tab) === threadKey)!;
+  let at = index;
+  if (source.id === target.id && at !== undefined) {
+    const from = source.tabs.indexOf(ref);
+    if (from < at) at -= 1;
+    if (from === at) return activateTab(root, targetId, threadKey);
+  }
+  let next = removeTab(root, threadKey, history);
+  if (source.id !== target.id) {
+    const emptied = findLeaf(next, source.id);
+    if (emptied && emptied.tabs.length === 0) next = removePane(next, source.id) ?? next;
+  }
+  return insertTab(next, targetId, ref, at);
+}
+
+/**
+ * Moves a tab into a new pane beside `targetId` on `edge`. A tab alone in its
+ * pane cannot split off its own pane. A source pane left empty closes.
+ */
+export function moveTabToEdge(
+  root: ChatPaneNode,
+  threadKey: string,
+  targetId: ChatPaneId,
+  edge: PaneEdge,
+  history: readonly string[],
+  newPaneId: ChatPaneId,
+  splitId: ChatPaneId,
+): ChatPaneNode {
+  const source = findLeafByThreadKey(root, threadKey);
+  if (!source || !findNode(root, targetId)) return root;
+  if (source.id === targetId && source.tabs.length === 1) return root;
+  const ref = source.tabs.find((tab) => scopedThreadKey(tab) === threadKey)!;
+  let next = removeTab(root, threadKey, history);
+  const emptied = findLeaf(next, source.id);
+  if (emptied && emptied.tabs.length === 0) next = removePane(next, source.id) ?? next;
+  if (!findNode(next, targetId)) return root;
+  return splitPane(next, targetId, edge, createLeaf(newPaneId, [ref], threadKey), splitId);
+}
+
+/**
+ * The window-wide recency order for the Ctrl+Tab switcher: tabs that are open,
+ * most recently used first, then any open tab never visited in tree order.
+ */
+export function buildCycleOrder(root: ChatPaneNode, history: readonly string[]): string[] {
+  const open = collectLeaves(root).flatMap((leaf) => leaf.tabs.map((tab) => scopedThreadKey(tab)));
+  const openSet = new Set(open);
+  const ordered = history.filter((key) => openSet.has(key));
+  const seen = new Set(ordered);
+  return [...ordered, ...open.filter((key) => !seen.has(key))];
+}
+
+/** Next index in a Ctrl+Tab walk; wraps around either way. */
+export function stepCycleIndex(index: number, length: number, direction: 1 | -1): number {
+  if (length <= 0) return 0;
+  return (index + direction + length) % length;
 }
