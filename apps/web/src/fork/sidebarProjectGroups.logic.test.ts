@@ -11,6 +11,9 @@ import {
   buildSidebarProjectGroupItems,
   buildSidebarProjectThreadGroups,
   isSidebarProjectDropAllowed,
+  mergeProjectOrder,
+  moveProjectKey,
+  projectDropIndex,
   projectGroupedActiveRows,
 } from "./sidebarProjectGroups.logic";
 
@@ -131,5 +134,37 @@ describe("project-grouped sidebar", () => {
         "a3",
       ]);
     });
+  });
+});
+
+describe("manual project order", () => {
+  it("keeps the saved order and appends new projects", () => {
+    expect(mergeProjectOrder([], ["a", "b"])).toEqual(["a", "b"]);
+    expect(mergeProjectOrder(["b", "a"], ["a", "b", "c"])).toEqual(["b", "a", "c"]);
+    const saved = ["b", "a"];
+    expect(mergeProjectOrder(saved, ["a"])).toBe(saved);
+  });
+
+  it("moves a key among the visible keys and keeps hidden keys in place", () => {
+    expect(moveProjectKey(["a", "b", "c"], ["a", "b", "c"], "c", 0)).toEqual(["c", "a", "b"]);
+    expect(moveProjectKey(["a", "b", "c"], ["a", "b", "c"], "a", 2)).toEqual(["b", "c", "a"]);
+    expect(moveProjectKey(["a", "x", "b", "c"], ["a", "b", "c"], "c", 0)).toEqual([
+      "c",
+      "x",
+      "a",
+      "b",
+    ]);
+    const order = ["a", "b"];
+    expect(moveProjectKey(order, ["a", "b"], "a", 0)).toBe(order);
+  });
+
+  it("finds the drop index from the pointer", () => {
+    const groups = [
+      { top: 0, bottom: 100 },
+      { top: 100, bottom: 200 },
+    ];
+    expect(projectDropIndex(groups, 10)).toBe(0);
+    expect(projectDropIndex(groups, 120)).toBe(1);
+    expect(projectDropIndex(groups, 180)).toBe(2);
   });
 });
