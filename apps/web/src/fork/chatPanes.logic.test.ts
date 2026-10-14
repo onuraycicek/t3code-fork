@@ -15,6 +15,7 @@ import {
   moveTabToPane,
   pickActiveAfterRemoval,
   removeTab,
+  resolveDraftTabCleanup,
   resolveTabDropIndex,
   splitPane,
   stepCycleIndex,
@@ -171,5 +172,43 @@ describe("recency", () => {
     expect(resolveTabDropIndex([50, 150, 250], 160)).toBe(2);
     expect(resolveTabDropIndex([50, 150, 250], 999)).toBe(3);
     expect(resolveTabDropIndex([], 5)).toBe(0);
+  });
+});
+
+describe("draft tabs", () => {
+  // A draft tab holds the reserved thread ref, so it is an ordinary tab.
+  it("adds a draft as a new tab of the focused pane and focuses a repeat", () => {
+    const added = insertTab(twoPanes(), "A", ref("draft"));
+    expect(tabIds(findLeaf(added, "A"))).toEqual(["a", "b", "c", "draft"]);
+    expect(findLeaf(added, "A")?.activeKey).toBe(key("draft"));
+    expect(tabIds(findLeaf(added, "B"))).toEqual(["d", "e"]);
+    const again = insertTab(activateTab(added, "A", key("a")), "A", ref("draft"));
+    expect(tabIds(findLeaf(again, "A"))).toEqual(["a", "b", "c", "draft"]);
+    expect(findLeaf(again, "A")?.activeKey).toBe(key("draft"));
+  });
+
+  it("promotion (same ref arriving as a server route) keeps the tab in place", () => {
+    const withDraft = insertTab(twoPanes(), "A", ref("draft"), 1);
+    const promoted = insertTab(withDraft, "A", ref("draft"));
+    expect(tabIds(findLeaf(promoted, "A"))).toEqual(["a", "draft", "b", "c"]);
+    expect(collectLeaves(promoted).flatMap((leaf) => leaf.tabs)).toHaveLength(6);
+  });
+
+  it("closing a draft tab only removes the tab", () => {
+    const withDraft = insertTab(twoPanes(), "A", ref("draft"));
+    const closed = closeTab(withDraft, key("draft"), [key("b")]);
+    expect(tabIds(findLeaf(closed, "A"))).toEqual(["a", "b", "c"]);
+    expect(findLeaf(closed, "A")?.activeKey).toBe(key("b"));
+  });
+
+  it("cleans up: promoted untracks, discarded drafts close, closed tabs untrack", () => {
+    const result = resolveDraftTabCleanup({
+      draftTabKeys: [key("live"), key("promoted"), key("gone"), key("closed")],
+      openKeys: new Set([key("live"), key("promoted"), key("gone")]),
+      draftSessionKeys: new Set([key("live")]),
+      serverKeys: new Set([key("promoted")]),
+    });
+    expect(result.close).toEqual([key("gone")]);
+    expect(result.untrack).toEqual([key("promoted"), key("gone"), key("closed")]);
   });
 });
