@@ -56,6 +56,8 @@ interface RightPanelActionsInput {
   readonly setTerminalFocusRequestId: Dispatch<SetStateAction<number>>;
   readonly onDiffPanelOpen: (() => void) | undefined;
   readonly closeRightPanelSurface: (surface: RightPanelSurface) => void;
+  /** Fork: false for a background split pane, which must not answer preview actions. */
+  readonly inputOwner?: boolean;
 }
 
 /**
@@ -285,12 +287,15 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     onDiffPanelOpen?.();
   };
   const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
+  const inputOwner = input.inputOwner ?? true;
   useEffect(
     () =>
-      subscribePreviewAction((action) => {
-        if (action === "toggle-panel") togglePreviewPanelStable();
-      }),
-    [togglePreviewPanelStable],
+      inputOwner
+        ? subscribePreviewAction((action) => {
+            if (action === "toggle-panel") togglePreviewPanelStable();
+          })
+        : undefined,
+    [inputOwner, togglePreviewPanelStable],
   );
 
   const shortcuts = {
