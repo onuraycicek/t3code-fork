@@ -27,9 +27,18 @@ Two features on top of upstream T3 Code:
   `Ctrl+1..9` (`Alt+1..9` off macOS) jumps to tab N. Layout persisted v2 (v1
   single-thread panes migrate to one tab).
 
+- **Queue waits for the agent to finish.** A queued message is held while the
+  agent still has background work that will wake it (subagents, monitors,
+  background commands such as a build watcher), and the agent's wake turns go
+  ahead of queued user messages. Background commands hold the queue for at most
+  15 minutes after the agent went idle (a dev server never wakes it). Steer
+  still sends at once. Server code: `apps/server/src/fork/queueHold.ts` (rule),
+  `queueHoldSweep.ts` (30 s re-check when work ends without a wake).
+
 ## Where the code lives (keep it this way: fewer rebase conflicts)
 
-All fork code is in `apps/web/src/fork/` (new files never conflict). Upstream
+All fork code is in `apps/web/src/fork/`, `apps/desktop/src/fork/` and
+`apps/server/src/fork/` (new files never conflict). Upstream
 files only carry small hook-up edits:
 
 - `ChatView.tsx`: `useChatPane()` + one-line `inputOwner` guards on window
@@ -42,6 +51,9 @@ files only carry small hook-up edits:
 - `SettingsPanels.tsx`: renders `<ForkSettingsRows />` (setting stored in
   `fork/forkPrefsStore.ts`, not in the upstream settings schema).
 - `threadActionMenu.logic.ts`, `contextMenuFallback.ts`: "Open in split" item.
+- Server: `Orchestrator.ts` (`forkQueueHold` in `startNextQueuedRun`),
+  `QueuedRunOrder.ts` (`forkWakeFirst`), `server.ts` (sweep layer),
+  `runtimeLayer.test.ts` (one wake dispatched later).
 
 New fork code goes in `fork/`; touch an upstream file only with a one-line hook.
 
