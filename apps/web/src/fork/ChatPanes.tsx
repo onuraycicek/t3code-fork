@@ -1,6 +1,6 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useParams } from "@tanstack/react-router";
 import { PanelBottomIcon, PanelRightIcon, XIcon } from "lucide-react";
 import {
   memo,
@@ -17,6 +17,7 @@ import {
   buildCycleOrder,
   collectLeaves,
   dropPreviewRect,
+  resolveDraftTabCleanup,
   findLeaf,
   findLeafByThreadKey,
   leafActiveThread,
@@ -34,7 +35,8 @@ import { SidebarVisibleThreads } from "./SidebarVisibleThreads";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { cn, isMacPlatform } from "../lib/utils";
 import { readLocalApi } from "../localApi";
-import { useProject, useThreadShell, useThreadShells } from "../state/entities";
+import { useComposerDraftStore } from "../composerDraftStore";
+import { useProject, useThreadRefs, useThreadShell, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import ChatView from "../components/ChatView";
 import { ProjectFavicon } from "../components/ProjectFavicon";
@@ -42,6 +44,12 @@ import { resolveThreadStatusPill } from "../components/Sidebar.logic";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
 import { ChatPaneProvider } from "./chatPaneContext";
+import {
+  draftRouteIdForTab,
+  useDraftIdByRef,
+  useDraftSessionByRef,
+  useLatchedViewKey,
+} from "./draftTabs";
 import "./fork.css";
 
 /** Height of each pane's tab strip; kept out of the top/bottom drop bands. */
@@ -76,10 +84,19 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
   const focusedPaneId = useChatPanesStore((state) => state.focusedPaneId);
   const [drag, setDrag] = useState<TabDragState | null>(null);
   const leaves = useMemo(() => collectLeaves(root), [root]);
+  const draftTabKeys = useChatPanesStore((state) => state.draftTabKeys);
+  const draftThreadKeys = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
+  const serverThreadRefs = useThreadRefs();
 
   const openThread = useCallback(
     (threadRef: ScopedThreadRef | null, replace = false) => {
       if (!threadRef) return;
+      // A tab that is still a draft lives on the draft route.
+      const draftId = draftRouteIdForTab(threadRef);
+      if (draftId) {
+        void navigate({ to: "/draft/$draftId", params: { draftId }, replace });
+        return;
+      }
       void navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
@@ -143,6 +160,27 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
     },
     [openThread],
   );
+
+  // Draft tabs follow their draft: promoted ones stop being tracked, ones whose
+  // draft was discarded (e.g. after a reload) close instead of staying broken.
+  useEffect(() => {
+    if (draftTabKeys.length === 0) return;
+    const { untrack, close } = resolveDraftTabCleanup({
+      draftTabKeys,
+      openKeys: new Set(leaves.flatMap((leaf) => leaf.tabs.map((tab) => scopedThreadKey(tab)))),
+      draftSessionKeys: new Set(
+        Object.values(draftThreadKeys).map((session) =>
+          // Explicit ref: a session also carries projectId, which scopedThreadKey would pick.
+          scopedThreadKey({ environmentId: session.environmentId, threadId: session.threadId }),
+        ),
+      ),
+      serverKeys: new Set(serverThreadRefs.map((ref) => scopedThreadKey(ref))),
+    });
+    // No route follow-up here: a closed draft's own route already redirects, and
+    // the route may meanwhile name another thread whose tab is about to sync in.
+    if (close.length > 0) useChatPanesStore.getState().closeTabs(close);
+    if (untrack.length > 0) useChatPanesStore.getState().untrackDraftTabs(untrack);
+  }, [draftTabKeys, draftThreadKeys, leaves, serverThreadRefs]);
 
   const splitPane = useCallback((paneId: ChatPaneId, edge: "right" | "bottom") => {
     useChatPanesStore
@@ -663,12 +701,26 @@ const PaneLeaf = memo(function PaneLeaf({
   const activeRef = leafActiveThread(leaf);
   const thread = useThreadShell(activeRef);
   const threadUsable = thread !== null && thread.deletedAt == null && thread.archivedAt == null;
+  const draftId = useDraftIdByRef(activeRef);
+  const routeParams = useParams({ strict: false }) as {
+    environmentId?: string;
+    threadId?: string;
+  };
+  const routeIsThisThread =
+    activeRef !== null &&
+    routeParams.environmentId === activeRef.environmentId &&
+    routeParams.threadId === activeRef.threadId;
+  // A draft keeps its draft view until the route moves to the promoted thread
+  // (ThreadRouteView navigates once the server owns the first send); the view
+  // key then carries one ChatView instance through that swap.
+  const draftView = draftId !== null && !(threadUsable && routeIsThisThread);
+  const viewKey = useLatchedViewKey(activeRef, draftId);
 
   return (
     <section
       data-chat-pane-id={leaf.id}
       data-chat-pane-focused={focused ? "true" : "false"}
-      aria-label={thread?.title ?? "Empty pane"}
+      aria-label={thread?.title ?? (draftId ? "New thread" : "Empty pane")}
       className="group/pane relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background"
       // Pointer only: a remounted view can move DOM focus on its own, and
       // that must not steal pane focus. Keyboard users switch with Mod+Alt+Arrow.
@@ -685,10 +737,22 @@ const PaneLeaf = memo(function PaneLeaf({
         // itself, below the pane strip.
         style={{ transform: "translateZ(0)" }}
       >
-        {activeRef && threadUsable ? (
+        {activeRef && draftView && draftId ? (
+          <ChatPaneProvider key={leaf.activeKey} value={{ focused, threadRef: activeRef }}>
+            <ChatView
+              key={viewKey}
+              draftId={draftId}
+              environmentId={activeRef.environmentId}
+              threadId={activeRef.threadId}
+              routeKind="draft"
+              reserveTitleBarControlInset={edges.top && edges.left}
+            />
+          </ChatPaneProvider>
+        ) : activeRef && threadUsable ? (
           // Only the active tab mounts a chat; keyed so switching tabs resets it.
           <ChatPaneProvider key={leaf.activeKey} value={{ focused, threadRef: activeRef }}>
             <ChatView
+              key={viewKey}
               environmentId={activeRef.environmentId}
               threadId={activeRef.threadId}
               routeKind="server"
@@ -813,11 +877,15 @@ function PaneTab({
   const key = scopedThreadKey(threadRef);
   const active = leaf.activeKey === key;
   const thread = useThreadShell(threadRef);
+  const draftSession = useDraftSessionByRef(threadRef);
+  const projectScope = thread ?? draftSession;
   const project = useProject(
-    thread ? { environmentId: thread.environmentId, projectId: thread.projectId } : null,
+    projectScope
+      ? { environmentId: projectScope.environmentId, projectId: projectScope.projectId }
+      : null,
   );
   const status = thread ? resolveThreadStatusPill({ thread }) : null;
-  const title = thread?.title ?? "Unavailable thread";
+  const title = thread?.title ?? (draftSession ? "New thread" : "Unavailable thread");
   return (
     <div
       role="tab"
