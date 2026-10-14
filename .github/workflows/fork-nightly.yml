@@ -262,7 +262,16 @@ jobs:
           key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           printf '%s' "$APPLE_API_KEY_CONTENT" > "$key_path"
           export APPLE_API_KEY="$key_path"
-          corepack pnpm@11.10.0 dist:desktop:dmg:arm64 --build-version "${{ steps.version.outputs.version }}" --signed
+          # Notarization and stapling talk to Apple and sometimes drop the
+          # connection (staple error 68); retry the build a couple of times.
+          for attempt in 1 2 3; do
+            if corepack pnpm@11.10.0 dist:desktop:dmg:arm64 --build-version "${{ steps.version.outputs.version }}" --signed; then
+              exit 0
+            fi
+            echo "Build attempt $attempt failed; retrying in 60s." >&2
+            sleep 60
+          done
+          exit 1
 
       # The release tag (v*.*.*) would also match upstream's release.yml.
       - name: Disable upstream workflows before tagging
