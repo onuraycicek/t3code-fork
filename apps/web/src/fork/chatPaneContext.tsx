@@ -1,5 +1,8 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useRef, type ReactNode } from "react";
+
+import type { ChatComposerHandle } from "../components/chat/ChatComposer";
+import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
 
 /**
  * What a view rendered inside a split pane needs to know. Read through
@@ -28,4 +31,27 @@ export function ChatPaneProvider({
 /** Null outside a split layout (the plain single chat view). */
 export function useChatPane(): ChatPaneContextValue | null {
   return useContext(ChatPaneContext);
+}
+
+/**
+ * Gives each pane its own composer handle. Upstream shares one app-wide handle
+ * (so the command palette reaches "the" composer); with several chats on screen
+ * that made a file dropped on a background pane land in the focused pane's
+ * composer. The focused pane keeps the shared handle, so the palette still
+ * targets it; background panes get a private one.
+ */
+export function PaneComposerScope({
+  focused,
+  children,
+}: {
+  focused: boolean;
+  children: ReactNode;
+}) {
+  const shared = useComposerHandleContext();
+  const local = useRef<ChatComposerHandle | null>(null);
+  return (
+    <ComposerHandleContext value={focused && shared ? shared : local}>
+      {children}
+    </ComposerHandleContext>
+  );
 }
