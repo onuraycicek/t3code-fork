@@ -1,0 +1,255 @@
+# Fork nightly: rebase the fork commits onto upstream main, let Claude resolve
+# conflicts or broken checks, then build a Developer ID signed + notarized
+# macOS app and publish it as a prerelease. The installed app's built-in
+# updater (nightly channel) picks it up from this repository's releases.
+name: Fork nightly
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # 04:00 Istanbul
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: Build and release even when upstream has not changed
+        type: boolean
+        default: false
+
+concurrency:
+  group: fork-nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+  id-token: write
+
+env:
+  FORK_BRANCH: fork/split-sidebar
+  UPSTREAM_URL: https://github.com/pingdotgg/t3code.git
+  COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    outputs:
+      changed: ${{ steps.publish.outputs.changed }}
+      sha: ${{ steps.publish.outputs.sha }}
+      migrations: ${{ steps.publish.outputs.migrations }}
+      resolved_by_claude: ${{ steps.publish.outputs.resolved_by_claude }}
+    steps:
+      # A fine-grained token (this repo only: contents + workflows). The default
+      # GITHUB_TOKEN may not push commits that touch .github/workflows, and
+      # every rebase replays upstream commits that do.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ env.FORK_BRANCH }}
+          fetch-depth: 0
+          token: ${{ secrets.FORK_PUSH_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "t3code-fork nightly"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config rerere.enabled true
+          git config rerere.autoupdate true
+          git remote add upstream "$UPSTREAM_URL"
+          git fetch --no-tags upstream main
+
+      # Conflict resolutions recorded by earlier runs replay automatically.
+      - name: Restore rerere cache
+        uses: actions/cache@v4
+        with:
+          path: .git/rr-cache
+          key: rerere-${{ github.run_id }}
+          restore-keys: rerere-
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Rebase onto upstream
+        id: rebase
+        run: |
+          old_base="$(git merge-base HEAD upstream/main)"
+          echo "old_base=$old_base" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "upstream_changed=false" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "upstream_changed=true" >> "$GITHUB_OUTPUT"
+          if git rebase upstream/main; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            # rerere may already have resolved everything; continue while it can.
+            while [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; do
+              if [ -n "$(git diff --name-only --diff-filter=U)" ]; then break; fi
+              GIT_EDITOR=true git rebase --continue || true
+            done
+            if [ -d .git/rebase-merge ] || [ -d .git/rebase-apply ]; then
+              echo "conflict=true" >> "$GITHUB_OUTPUT"
+              git diff --name-only --diff-filter=U
+            else
+              echo "conflict=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Resolve conflicts with Claude
+        if: steps.rebase.outputs.conflict == 'true'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: >-
+            A rebase of this fork onto upstream/main stopped with conflicts.
+            Follow .github/fork/sync-instructions.md exactly and finish the rebase.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 120
+            --allowedTools "Bash,Read,Edit,Write,Glob,Grep"
+
+      - name: Fork checks
+        id: checks
+        if: steps.rebase.outputs.upstream_changed == 'true' || inputs.force_build
+        continue-on-error: true
+        run: |
+          test ! -d .git/rebase-merge && test ! -d .git/rebase-apply
+          make install
+          make typecheck-web
+          make lint-web
+          make test-fork
+
+      - name: Fix failing checks with Claude
+        if: steps.checks.outcome == 'failure'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: >-
+            After rebasing this fork onto upstream/main, the fork checks fail
+            (or the rebase is unfinished). Follow .github/fork/sync-instructions.md
+            exactly until every make target passes.
+          claude_args: >-
+            --model claude-opus-5-5
+            --max-turns 120
+            --allowedTools "Bash,Read,Edit,Write,Glob,Grep"
+
+      - name: Re-run fork checks
+        if: steps.checks.outcome == 'failure'
+        run: |
+          make install
+          make typecheck-web
+          make lint-web
+          make test-fork
+
+      - name: Verify and push
+        id: publish
+        env:
+          OLD_BASE: ${{ steps.rebase.outputs.old_base }}
+        run: |
+          test ! -d .git/rebase-merge && test ! -d .git/rebase-apply
+          test -z "$(git status --porcelain --untracked-files=no)" || {
+            echo "Uncommitted changes left behind:" >&2; git status --short >&2; exit 1; }
+          git merge-base --is-ancestor upstream/main HEAD
+          fork_commits="$(git log --format=%s upstream/main..HEAD | grep -c '^fork:' || true)"
+          test "$fork_commits" -ge 3
+          if [ "${{ steps.rebase.outputs.upstream_changed }}" = "true" ]; then
+            git push --force-with-lease="$FORK_BRANCH" origin "HEAD:$FORK_BRANCH"
+            changed=true
+          else
+            changed="${{ inputs.force_build || 'false' }}"
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "resolved_by_claude=${{ steps.rebase.outputs.conflict == 'true' || steps.checks.outcome == 'failure' }}" >> "$GITHUB_OUTPUT"
+          migrations="$(git diff --name-only --diff-filter=A "$OLD_BASE" upstream/main -- apps/server/src/persistence/Migrations | tr '\n' ' ')"
+          echo "migrations=$migrations" >> "$GITHUB_OUTPUT"
+
+      # Upstream workflows come along with every rebase; only this one may run.
+      - name: Disable upstream workflows
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow list --all --json path,state --jq '.[] | select(.state == "active") | .path' |
+            grep -v '^\.github/workflows/fork-nightly\.yml$' |
+            while read -r path; do gh workflow disable "$(basename "$path")" || true; done
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Compute version
+        id: version
+        run: |
+          base="$(node -p 'const [a,b,c]=require("./apps/desktop/package.json").version.split(".").map(Number); `${a}.${b}.${c+1}`')"
+          version="${base}-nightly.$(date -u +%Y%m%d).9$(date -u +%H%M)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version"
+
+      - name: Build signed + notarized app
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          T3CODE_DESKTOP_SKIP_MAC_PASSKEYS: "true"
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ github.repository }}
+        run: |
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY_CONTENT" > "$key_path"
+          export APPLE_API_KEY="$key_path"
+          corepack pnpm@11.10.0 dist:desktop:dmg:arm64 --build-version "${{ steps.version.outputs.version }}" --signed
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MIGRATIONS: ${{ needs.sync.outputs.migrations }}
+          RESOLVED_BY_CLAUDE: ${{ needs.sync.outputs.resolved_by_claude }}
+        run: |
+          {
+            echo "Fork nightly built from \`${{ needs.sync.outputs.sha }}\` (upstream main + fork commits)."
+            if [ "$RESOLVED_BY_CLAUDE" = "true" ]; then
+              echo
+              echo "Conflicts or broken checks were fixed by Claude in this run; see the workflow log."
+            fi
+            if [ -n "$MIGRATIONS" ]; then
+              echo
+              echo "**New upstream database migrations:** $MIGRATIONS"
+              echo "Do not switch back to an older official build until it includes them."
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" \
+            --prerelease \
+            --target "${{ needs.sync.outputs.sha }}" \
+            --title "Fork nightly $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            release/*-arm64.zip release/*-arm64.zip.blockmap release/*-arm64.dmg release/nightly-mac.yml
+
+      - name: Prune old releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release list --limit 100 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' |
+            tail -n +11 |
+            while read -r tag; do gh release delete "$tag" --yes --cleanup-tag || true; done
