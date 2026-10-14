@@ -58,6 +58,13 @@ Secrets: `CSC_LINK`, `CSC_KEY_PASSWORD` (Developer ID p12),
 `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`), `FORK_PUSH_TOKEN`
 (fine-grained token for this repo: Contents + Workflows read/write).
 
+## Installing
+
+First install (or any time): `make install-latest` from Terminal, not from
+inside the app. It downloads the newest CI release, quits the running fork
+app, replaces `/Applications/T3 Code Fork.app` and relaunches it. After that
+the app updates itself from this repository's releases.
+
 ## Manual update
 
 ```sh
