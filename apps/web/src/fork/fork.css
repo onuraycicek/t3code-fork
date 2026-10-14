@@ -89,3 +89,14 @@ body.chat-pane-dragging {
   font-weight: 500;
   color: rgb(59, 130, 246);
 }
+[data-chat-pane-drop-overlay="insert"] {
+  background: rgb(59, 130, 246);
+  border: 0;
+  border-radius: 1px;
+}
+[data-chat-pane-tabs] {
+  scrollbar-width: none;
+}
+[data-chat-pane-tabs]::-webkit-scrollbar {
+  display: none;
+}
