@@ -1,3 +1,4 @@
+import { ResponseHandoffActions } from "../../fork/ResponseHandoffActions";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { type RunId, type TurnItemId } from "@t3tools/contracts";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
@@ -203,6 +204,11 @@ function AssistantMessageMeta({
       {!message.streaming && projectedItem ? (
         <AssistantReplyButton message={message} itemId={projectedItem.sourceItemId} />
       ) : null}
+      <ResponseHandoffActions
+        item={projectedItem?.item}
+        threadRef={ctx.threadRef}
+        text={message.text}
+      />
       {!message.streaming && (
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
