@@ -17,6 +17,16 @@ Two features on top of upstream T3 Code:
     on its center to swap the two panes. Dividers resize (15–85%), double-click
     resets to 50/50. The layout is saved in localStorage.
 
+- **Tabs per pane.** Every pane is a tab group; a single pane with tabs is a
+  valid layout (no collapse to the plain view). Opening a thread (sidebar click,
+  promoted draft) focuses its tab or adds a new tab to the focused pane; "Open in
+  split" makes a new pane. Tabs: middle-click/x close, right-click menu (close,
+  others, to the right, all), drag to reorder, move between panes, or drop on a
+  pane edge to split. `Cmd+Shift+W` closes the tab, `Ctrl+Tab` / `Ctrl+Shift+Tab`
+  walk tabs of all panes in most-recently-used order (release Ctrl to commit),
+  `Ctrl+1..9` (`Alt+1..9` off macOS) jumps to tab N. Layout persisted v2 (v1
+  single-thread panes migrate to one tab).
+
 ## Where the code lives (keep it this way: fewer rebase conflicts)
 
 All fork code is in `apps/web/src/fork/` (new files never conflict). Upstream
