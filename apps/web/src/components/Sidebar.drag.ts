@@ -8,6 +8,7 @@ import {
   type SidebarListMarker,
   type SidebarSection,
 } from "./Sidebar.logic";
+import { projectGroupedActiveRows } from "../fork/sidebarProjectGroups.logic";
 
 const stationary = { x: 0, y: 0, scaleX: 1, scaleY: 1 };
 const hidden = { ...stationary, scaleY: 0 };
@@ -132,6 +133,7 @@ export function createSidebarSortingStrategy(input: {
         }
         continue;
       }
+      if (item.kind !== "thread") continue;
       if (item.section === "pinned" || item.section === "active" || item.section === "working")
         cardHeight ??= rects[index]?.height;
       else slimHeight ??= rects[index]?.height;
@@ -169,7 +171,9 @@ export function createSidebarSortingStrategy(input: {
     const projected: SidebarListItem[] = [];
     const marker = (name: SidebarListMarker) => projected.push({ kind: "marker", marker: name });
     const section = (name: "active" | "settled") => {
-      if (groups[name].length > 0) projected.push(...groups[name]);
+      const rows =
+        name === "active" ? projectGroupedActiveRows(items, groups.active) : groups[name];
+      if (rows.length > 0) projected.push(...rows);
       else marker(`${name}-placeholder`);
     };
     marker("pinned-header");
