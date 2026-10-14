@@ -31,7 +31,9 @@ typecheck:
 
 # Fork checks: web + contracts typecheck, lint of the files this fork changes,
 # and the unit tests next to them.
-FORK_TESTS := apps/web/src/fork/chatPanes.logic.test.ts apps/web/src/fork/sidebarProjectGroups.logic.test.ts apps/web/src/components/Sidebar.logic.test.ts apps/web/src/components/Sidebar.drag.test.ts apps/web/src/components/threadActionMenu.logic.test.ts packages/contracts/src/settings.test.ts
+# Every fork test is picked up automatically, plus the upstream tests next to
+# files the fork hooks into.
+FORK_TESTS := $(wildcard apps/web/src/fork/*.test.ts apps/desktop/src/fork/*.test.ts) apps/web/src/components/Sidebar.logic.test.ts apps/web/src/components/Sidebar.drag.test.ts apps/web/src/components/threadActionMenu.logic.test.ts packages/contracts/src/settings.test.ts
 
 typecheck-web:
 	$(PNPM) exec vp run --filter @t3tools/web typecheck
