@@ -207,6 +207,11 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { TooltipProvider } from "./ui/tooltip";
+import { openChatPaneSplit, useChatPanesStore } from "../fork/chatPanesStore";
+import { SidebarProjectGroupRow } from "../fork/SidebarProjectGroupRows";
+import { isSidebarProjectDropAllowed } from "../fork/sidebarProjectGroups.logic";
+import { isSidebarProjectListItem } from "../fork/sidebarProjectItems";
+import { useSidebarProjectGrouping } from "../fork/useSidebarProjectGrouping";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import {
@@ -365,6 +370,8 @@ function useSidebarThreads(input: {
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly routeThreadRef: ScopedThreadRef | null;
+  readonly projectGroups: readonly SidebarProjectSnapshot[];
+  readonly projectGroupByScopeKey: ReadonlyMap<string, SidebarProjectSnapshot>;
 }) {
   const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadRef } =
     input;
@@ -451,9 +458,16 @@ function useSidebarThreads(input: {
   const visibleWorkingThreads = workingShelfExpanded
     ? workingThreads
     : routeThreadOnly(workingThreads, routeRowThreadKey);
+  const grouping = useSidebarProjectGrouping({
+    activeThreads,
+    projectGroups: input.projectGroups,
+    projectGroupByScopeKey: input.projectGroupByScopeKey,
+    projectFilterActive: scopedProjectKeys !== null,
+    routeThreadKey: routeRowThreadKey,
+  });
   const orderedThreads = [
     ...pinnedThreads,
-    ...activeThreads,
+    ...grouping.visibleActiveThreads,
     ...visibleWorkingThreads,
     ...visibleSnoozedThreads,
     ...renderedSettledThreads,
@@ -471,6 +485,7 @@ function useSidebarThreads(input: {
   return {
     routeRowThreadKey,
     ...partition,
+    grouping,
     threads,
     workingShelfEnabled,
     searchableThreads: [
@@ -912,6 +927,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const routeThreadRef = resolveActiveThreadRouteRef(routeTarget, routeDraftThread);
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
   const routeThreadKeyRef = useRef(routeThreadKey);
+  const routeThreadRefRef = useRef(routeThreadRef);
 
   // A selection made under one scope can hold threads the next scope hides.
   const setProjectScopeKey = (key: string | null) => {
@@ -1064,12 +1080,15 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     pinnedKeysById,
     activeKeysById,
     routeRowThreadKey,
+    grouping,
   } = useSidebarThreads({
     projectScopeKey,
     scopedProjectKeys,
     serverConfigs,
     optimisticDrop,
     routeThreadRef,
+    projectGroups,
+    projectGroupByScopeKey,
   });
 
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
@@ -1535,6 +1554,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   const sectionByThreadKeyRef = useRef(sectionByThreadKey);
   useLayoutEffect(() => {
     routeThreadKeyRef.current = routeThreadKey;
+    routeThreadRefRef.current = routeThreadRef;
     projectGroupsRef.current = projectGroups;
     orderedThreadKeysRef.current = orderedThreadKeys;
     threadByKeyRef.current = threadByKey;
@@ -1682,7 +1702,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ): SidebarListItem[] =>
       list.map((thread) => {
         const key = scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id));
-        return { kind: "thread", key, section };
+        return { kind: "thread", key, section, ...grouping.threadItemProps(thread) };
       });
     if (
       pinnedThreads.length +
@@ -1700,7 +1720,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     items.push({ kind: "marker", marker: "pinned-divider" });
     const activeRows = rowsOf(activeThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
-    items.push(...activeRows);
+    items.push(...grouping.activeItems(activeRows));
     if (workingThreads.length > 0) {
       items.push({ kind: "marker", marker: "working-header" });
       items.push(...rowsOf(visibleWorkingThreads, "working"));
@@ -1719,7 +1739,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   // list's identity until its order changes, so the sorting strategy, the
   // sortable context and every sortable row stay memoized meanwhile.
   const sidebarListItemsKey = sidebarListItemsFresh
-    .map((item) => (item.kind === "thread" ? item.section + ":" + item.key : item.marker))
+    .map((item) =>
+      item.kind === "thread" ? item.section + ":" + item.key : sidebarListItemId(item),
+    )
     .join("\n");
   const [sidebarListItemsState, setSidebarListItems] = useState(sidebarListItemsFresh);
   const [sidebarListItemsKeyState, setSidebarListItemsKeyState] = useState(sidebarListItemsKey);
@@ -1800,6 +1822,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     if (source === undefined) return createSidebarCollisionDetection(() => false);
     return createSidebarCollisionDetection(
       (id) => {
+        if (!isSidebarProjectDropAllowed(sidebarListItems, draggedThreadKey, id)) return false;
         const target = resolveSidebarDropTarget(sidebarListItems, draggedThreadKey, id);
         if (target === null) return false;
         return (
@@ -2370,6 +2393,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             buildThreadActionMenuItems({
+              canOpenInSplit:
+                useChatPanesStore.getState().root !== null ||
+                (routeThreadRefRef.current !== null &&
+                  scopedThreadKey(routeThreadRefRef.current) !== threadKey),
               canOperate: readEnvironmentScope(
                 threadRef.environmentId,
                 AuthOrchestrationOperateScope,
@@ -2411,6 +2438,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           return;
         }
         switch (clicked.value) {
+          case "open-in-split":
+            if (openChatPaneSplit(routeThreadRefRef.current, threadRef, "right")) {
+              void navigateToThread(threadRef);
+            }
+            return;
           case "filter-by-project":
             if (threadProjectGroup) {
               setProjectScopeKey(
@@ -2960,6 +2992,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             }
                             thread={thread}
                             variant={rowVariant}
+                            hideProjectLabel={grouping.hidesProjectLabel(section)}
                             variantAction={
                               section === "snoozed"
                                 ? "unsnooze"
@@ -3062,6 +3095,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
                           items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                          continue;
+                        }
+                        if (isSidebarProjectListItem(item)) {
+                          items.push(
+                            <SidebarProjectGroupRow
+                              key={sidebarListItemId(item)}
+                              item={item}
+                              project={grouping.projectOf(item.projectKey)}
+                              onToggle={grouping.toggleProject}
+                              onShowMore={grouping.showMore}
+                            />,
+                          );
                           continue;
                         }
                         switch (item.marker) {
