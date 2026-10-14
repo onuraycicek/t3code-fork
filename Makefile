@@ -9,7 +9,7 @@ PNPM := corepack pnpm@11.10.0
 # Separate data home so the fork never touches the official ~/.t3 state.
 FORK_HOME ?= $(HOME)/.t3-fork
 
-.PHONY: install seed-dev-db dev dev-desktop typecheck typecheck-web lint-web test-fork build-desktop install-app
+.PHONY: install seed-dev-db dev dev-desktop typecheck typecheck-web lint-web test-fork build-desktop build-desktop-signed install-app
 
 install:
 	$(PNPM) install
@@ -37,8 +37,11 @@ typecheck-web:
 	$(PNPM) exec vp run --filter @t3tools/web typecheck
 	$(PNPM) exec vp run --filter @t3tools/contracts typecheck
 
+# Every TS file the fork changes relative to upstream (committed or not).
+FORK_CHANGED_TS = $$( { git diff --name-only --diff-filter=ACMR $$(git merge-base HEAD upstream/main); git ls-files --others --exclude-standard; } | grep -E '\.(ts|tsx)$$' | sort -u)
+
 lint-web:
-	$(PNPM) exec vp lint $$(git status --short -uall | awk '{print $$2}' | grep -E '\.(ts|tsx)$$')
+	$(PNPM) exec vp lint $(FORK_CHANGED_TS)
 
 test-fork:
 	$(PNPM) exec vp test run $(FORK_TESTS)
@@ -63,6 +66,21 @@ build-desktop: $(RESOURCE_MONITOR_DST)
 	env -u GITHUB_REPOSITORY -u T3CODE_DESKTOP_UPDATE_REPOSITORY T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR=true \
 		$(PNPM) dist:desktop:dmg:arm64 --build-version $(FORK_BUILD_VERSION)
 
+# Developer ID signed + notarized build with an update feed pointing at the
+# fork's GitHub releases (the same build CI publishes). Uses the Developer ID
+# identity from the login keychain and the App Store Connect API key in
+# ~/.signing/t3code-fork for notarization.
+SIGNING_DIR ?= $(HOME)/.signing/t3code-fork
+FORK_UPDATE_REPOSITORY ?= onuraycicek/t3code-fork
+
+build-desktop-signed: $(RESOURCE_MONITOR_DST)
+	T3CODE_DESKTOP_SKIP_MAC_PASSKEYS=true \
+	T3CODE_DESKTOP_UPDATE_REPOSITORY=$(FORK_UPDATE_REPOSITORY) \
+	T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR=true \
+	APPLE_API_KEY=$(SIGNING_DIR)/AuthKey_27GTRK76V8.p8 APPLE_API_KEY_ID=27GTRK76V8 \
+	APPLE_API_ISSUER=85c77e95-1c00-49b2-bdee-dc1678d5151e \
+		$(PNPM) dist:desktop:dmg:arm64 --build-version $(FORK_BUILD_VERSION) --signed
+
 # Unpacks the newest build as /Applications/T3 Code Fork.app and signs the whole
 # bundle with the local Apple Development certificate. A stable certificate
 # keeps the app's designated requirement the same across builds, so a keychain
@@ -76,5 +94,8 @@ install-app:
 	ditto -x -k "$$(ls -t release/*-arm64.zip | head -1)" release/app
 	/bin/rm -rf "$(FORK_APP)"
 	ditto "release/app/T3 Code (Nightly).app" "$(FORK_APP)"
-	codesign --force --deep --sign "$(FORK_SIGN_IDENTITY)" "$(FORK_APP)"
+	# Developer ID builds (CI and build-desktop-signed) keep their notarized
+	# signature; only unsigned local builds get the Apple Development identity.
+	codesign -dv "$(FORK_APP)" 2>&1 | grep -q "Authority=Developer ID Application" || \
+		codesign --force --deep --sign "$(FORK_SIGN_IDENTITY)" "$(FORK_APP)"
 	codesign --verify --deep --strict "$(FORK_APP)"
