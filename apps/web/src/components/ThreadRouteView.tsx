@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import ChatView from "./ChatView";
 import { BackgroundThreadContext } from "./chat/backgroundThread";
+import { ChatPanes } from "../fork/ChatPanes";
+import { useChatPaneRoute } from "../fork/useChatPaneRoute";
 import { SidebarInset } from "./ui/sidebar";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
@@ -103,9 +105,12 @@ export function ThreadRouteView({
     }
   }, [background, bootstrapComplete, environmentHasAnyThreads, navigate, renderState, target]);
 
+  const paneRoot = useChatPaneRoute(target, renderState);
   let view: React.ReactNode = null;
   let redirect: React.ReactNode = null;
-  if (target.kind === "draft") {
+  if (paneRoot !== null) {
+    view = <ChatPanes root={paneRoot} />;
+  } else if (target.kind === "draft") {
     if (draftSession) {
       view = (
         <ChatView
