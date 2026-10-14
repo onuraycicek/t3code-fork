@@ -1,3 +1,4 @@
+import { ResponseHandoffActions } from "../../fork/ResponseHandoffActions";
 import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { shouldPreserveAssistantLineBreaks } from "@t3tools/shared/markdownPipeline";
 import { MarkdownFindContext, useFindRevealRef } from "./markdownFindContext";
@@ -3029,6 +3030,11 @@ function AssistantMessageMeta({
       {projectedItem?.item.type === "assistant_message" ? (
         <AssistantForkButton projectedItem={projectedItem} />
       ) : null}
+      <ResponseHandoffActions
+        item={projectedItem?.item}
+        threadRef={ctx.threadRef}
+        text={message.text}
+      />
       {!message.streaming && (
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
