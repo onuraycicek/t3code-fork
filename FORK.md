@@ -36,7 +36,29 @@ files only carry small hook-up edits:
 New fork code goes in `fork/`; touch an upstream file only with a one-line hook.
 `git rerere` is enabled in this repo, so a conflict resolved once is reused.
 
-## Weekly update
+## Nightly CI (github.com/onuraycicek/t3code-fork)
+
+`.github/workflows/fork-nightly.yml` runs every night at 01:00 UTC (and on
+manual dispatch):
+
+1. Rebases the `fork:` commits onto upstream `main` (git rerere cache kept in
+   Actions cache).
+2. Conflicts, or failing `make typecheck-web lint-web test-fork`, are handed to
+   Claude Code (`anthropics/claude-code-action`, subscription token) with
+   `.github/fork/sync-instructions.md`. Its result is pushed only if every check
+   passes; otherwise the run fails and nothing ships.
+3. Builds a Developer ID signed + notarized macOS app on macos-15 and publishes
+   it as a prerelease `v<version>`. The installed app's built-in updater
+   (nightly channel, every few minutes) installs it.
+4. Upstream workflows that come along are disabled; only `fork-nightly.yml`
+   runs.
+
+Secrets: `CSC_LINK`, `CSC_KEY_PASSWORD` (Developer ID p12),
+`APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` (notarization),
+`CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`), `FORK_PUSH_TOKEN`
+(fine-grained token for this repo: Contents + Workflows read/write).
+
+## Manual update
 
 ```sh
 git fetch origin
