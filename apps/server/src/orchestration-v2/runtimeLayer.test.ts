@@ -3954,7 +3954,6 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         runId: (yield* runFor("queued")).id,
         beforeRunId: null,
       });
-      yield* dispatch("late-wake", true);
       // A queued wake has no clock yet: what runs before it is still unknown.
       assert.isUndefined((yield* runFor("early-wake")).workStartedAt);
 
@@ -4000,6 +3999,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       yield* settle("early-wake", DateTime.add(now, { seconds: 1 }));
       assert.equal(yield* Queue.take(startedRunIds), (yield* runFor("queued")).id);
       assert.isUndefined((yield* runFor("queued")).workStartedAt);
+      // fork: wakes go ahead of queued user messages, so this one arrives behind the running prompt.
+      yield* dispatch("late-wake", true);
 
       // The queued prompt starts long after it was requested; the wake after it
       // counts from that start, not from the request.
