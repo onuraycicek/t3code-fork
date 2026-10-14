@@ -1,16 +1,22 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { isMacPlatform } from "../lib/utils";
 import type { ThreadRouteTarget } from "../threadRoutes";
-import type { ChatPaneNode } from "./chatPanes.logic";
-import { openChatPaneSplit, useChatPanesStore } from "./chatPanesStore";
+import { createLeaf, type ChatPaneNode } from "./chatPanes.logic";
+import { SEED_PANE_ID, openChatPaneSplit, useChatPanesStore } from "./chatPanesStore";
 
 /**
- * Connects the thread route to the split layout. Returns the layout root, or
- * null for the plain single view.
+ * Connects the thread route to the tabbed pane layout. Returns the layout root,
+ * or null for the plain upstream view (no server thread open: draft route,
+ * loading or missing thread).
  *
+ * - Any ready server thread route puts the window into the pane layout, even
+ *   with a single pane. The first frame uses a seed pane identical to the one
+ *   the sync effect stores, so the chat view does not remount.
+ * - A draft that is promoted to a server thread becomes a route change, so it
+ *   lands as a new tab of the focused pane.
  * - The route names the focused pane, so a route change is mirrored into the
  *   layout. Only route changes sync: a layout edit such as a closed pane must
  *   not pull the stale route thread back before the follow-up navigation lands,
@@ -33,7 +39,6 @@ export function useChatPaneRoute(
   useEffect(() => {
     const latest = latestTargetRef.current;
     if (latest.kind !== "server" || renderState === "missing") return;
-    if (useChatPanesStore.getState().root === null) return;
     useChatPanesStore.getState().syncRouteThread(latest.threadRef);
   }, [renderState, routeThreadKey]);
 
@@ -54,5 +59,15 @@ export function useChatPaneRoute(
     return () => window.removeEventListener("keydown", handler, true);
   }, [hasPaneLayout, renderState, target.kind]);
 
-  return target.kind === "server" ? paneRoot : null;
+  const routeEnvironmentId = target.kind === "server" ? target.threadRef.environmentId : null;
+  const routeThreadId = target.kind === "server" ? target.threadRef.threadId : null;
+  const seedRoot = useMemo(
+    () =>
+      routeEnvironmentId !== null && routeThreadId !== null
+        ? createLeaf(SEED_PANE_ID, [{ environmentId: routeEnvironmentId, threadId: routeThreadId }])
+        : null,
+    [routeEnvironmentId, routeThreadId],
+  );
+  if (target.kind !== "server") return null;
+  return paneRoot ?? (renderState === "ready" ? seedRoot : null);
 }
