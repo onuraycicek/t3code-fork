@@ -29,6 +29,7 @@ import { createPageScrollController, type PageScrollKey } from "./pageScrollCont
 import { createUpwardScrollDetector, isTimelineScrollTarget } from "./timelineScrollTarget";
 import { resolveTimelineIsAtEnd } from "./MessagesTimeline.logic";
 import { measuredEndOffset, settleListScroll } from "./useTimelinePositionRestore";
+import { useChatPane } from "../../fork/chatPaneContext";
 import { shouldReleaseTimelineAnchorForToolActivity } from "../ChatView.logic";
 import { releaseChatTimelineAnchor } from "../ChatView.logic";
 import type { Dispatch, RefObject } from "react";
@@ -85,6 +86,8 @@ export function useTimelineFollow(input: TimelineFollowInput) {
     timelineAnchorMessageId,
     setTimelineAnchor,
   } = input;
+  // Fork: a background split pane must not own window-level input.
+  const inputOwner = useChatPane()?.focused ?? true;
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtEndRef = useRef(true);
   const isTimelineAtLogicalEnd = () =>
@@ -360,8 +363,9 @@ export function useTimelineFollow(input: TimelineFollowInput) {
           if (
             !(event.target instanceof Node) ||
             (!scrollNode.contains(event.target) &&
-              event.target !== document.body &&
-              event.target !== document.documentElement) ||
+              // A background pane only scrolls for keys aimed at its own timeline.
+              (!inputOwner ||
+                (event.target !== document.body && event.target !== document.documentElement))) ||
             event.defaultPrevented ||
             event.isComposing ||
             event.altKey ||
@@ -465,6 +469,7 @@ export function useTimelineFollow(input: TimelineFollowInput) {
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A thread switch remounts the list's scroll node, so the listeners reattach.
     activeThreadId,
     composerRef,
+    inputOwner,
     isTimelineAtLogicalEndStable,
     legendListRef,
     timelineRealContentOverflowsViewportStable,
