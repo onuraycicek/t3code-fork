@@ -229,9 +229,11 @@ jobs:
             grep -v '^\.github/workflows/fork-nightly\.yml$' |
             while read -r path; do gh workflow disable --repo "$GITHUB_REPOSITORY" "$(basename "$path")" || true; done
 
+      # Releases use the fine-grained token: GITHUB_TOKEN was refused (403)
+      # when tagging a commit whose history touches .github/workflows.
       - name: Publish prerelease
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           MIGRATIONS: ${{ needs.sync.outputs.migrations }}
           RESOLVED_BY_CLAUDE: ${{ needs.sync.outputs.resolved_by_claude }}
@@ -257,7 +259,7 @@ jobs:
 
       - name: Prune old releases
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
         run: |
           gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' |
             tail -n +11 |
