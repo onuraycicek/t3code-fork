@@ -12,6 +12,9 @@ interface ForkPrefsState {
   /** Lists active sidebar threads under a header per project. */
   sidebarProjectGroupingEnabled: boolean;
   setSidebarProjectGroupingEnabled: (enabled: boolean) => void;
+  /** Manual order of project groups in the grouped sidebar (logical projectKeys). */
+  sidebarProjectOrder: readonly string[];
+  setSidebarProjectOrder: (order: readonly string[]) => void;
   /** Desktop only: hold a power-save blocker so the Mac does not sleep. */
   keepAwakeMode: KeepAwakeMode;
   setKeepAwakeMode: (mode: KeepAwakeMode) => void;
@@ -23,6 +26,8 @@ export const useForkPrefsStore = create<ForkPrefsState>()(
       sidebarProjectGroupingEnabled: true,
       setSidebarProjectGroupingEnabled: (enabled) =>
         set({ sidebarProjectGroupingEnabled: enabled }),
+      sidebarProjectOrder: [],
+      setSidebarProjectOrder: (order) => set({ sidebarProjectOrder: [...order] }),
       keepAwakeMode: "working",
       setKeepAwakeMode: (mode) => set({ keepAwakeMode: isKeepAwakeMode(mode) ? mode : "working" }),
     }),
@@ -33,6 +38,7 @@ export const useForkPrefsStore = create<ForkPrefsState>()(
       ),
       partialize: (state) => ({
         sidebarProjectGroupingEnabled: state.sidebarProjectGroupingEnabled,
+        sidebarProjectOrder: state.sidebarProjectOrder,
         keepAwakeMode: state.keepAwakeMode,
       }),
     },
