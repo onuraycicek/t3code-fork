@@ -170,6 +170,7 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { ForkSettingsRows } from "../../fork/ForkSettingsRows";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 
@@ -2243,6 +2244,8 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        <ForkSettingsRows />
 
         <SettingsRow
           {...searchableSetting("working-shelf")}
