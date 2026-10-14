@@ -44,6 +44,10 @@ files only carry small hook-up edits:
 - `threadActionMenu.logic.ts`, `contextMenuFallback.ts`: "Open in split" item.
 
 New fork code goes in `fork/`; touch an upstream file only with a one-line hook.
+
+Commit subjects: `fork: ...` for user-facing changes (they become "Fork: ..."
+items in the app's update popover), `fork(ci): ...` for CI, build and tooling
+changes (kept out of the release notes).
 `git rerere` is enabled in this repo, so a conflict resolved once is reused.
 
 ## Nightly CI (github.com/onuraycicek/t3code-fork)
@@ -58,7 +62,10 @@ manual dispatch):
    `.github/fork/sync-instructions.md`. Its result is pushed only if every check
    passes; otherwise the run fails and nothing ships.
 3. Builds a Developer ID signed + notarized macOS app on macos-15 and publishes
-   it as a prerelease `v<version>`. The installed app's built-in updater
+   it as a prerelease `v<version>`. The body (shown as "What's changed" in the
+   update popover) comes from `.github/fork/release-notes.sh`: upstream
+   nightlies' "What's Changed" items since the previous fork release, then new
+   `fork:` changes. The installed app's built-in updater
    (nightly channel, every few minutes) installs it.
 4. Upstream workflows that come along are disabled; only `fork-nightly.yml`
    runs.
