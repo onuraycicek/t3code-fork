@@ -35,6 +35,7 @@ import {
   releaseChatTimelineAnchor,
   shouldReleaseTimelineAnchorForToolActivity,
 } from "../ChatView.logic";
+import { useChatPane } from "../../fork/chatPaneContext";
 import type { Dispatch, RefObject } from "react";
 import type { ThreadStructure } from "@t3tools/client-runtime/state/shell";
 import type { deriveThreadActivityRun } from "@t3tools/client-runtime/state/thread-execution";
@@ -184,6 +185,8 @@ export function useTimelineFollow(input: TimelineFollowInput) {
     timelineAnchorMessageId,
     setTimelineAnchor,
   } = input;
+  // Fork: a background split pane must not own window-level input.
+  const inputOwner = useChatPane()?.focused ?? true;
   const [visitState, setVisit] = useState<TimelineFollowVisit>({
     threadKey: activeThreadKey,
     followEnd: true,
@@ -366,6 +369,12 @@ export function useTimelineFollow(input: TimelineFollowInput) {
   }, [composerTimelineInset, readCurrentFollow, scrollToEndStable]);
 
   const handleNavigation = (navigation: TimelineNavigation) => {
+    if (
+      navigation.source === "key" &&
+      !inputOwner &&
+      !viewportRef.current?.scrollNode.contains(document.activeElement)
+    )
+      return;
     const composer = composerRef.current;
     const awayFromEnd = () => resolveTimelineIsAtEnd(legendListRef.current?.getState()) === false;
     const releases = navigationReleasesFollow(navigation, {
