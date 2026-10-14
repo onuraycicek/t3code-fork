@@ -33,11 +33,12 @@ typecheck:
 # and the unit tests next to them.
 # Every fork test is picked up automatically, plus the upstream tests next to
 # files the fork hooks into.
-FORK_TESTS := $(wildcard apps/web/src/fork/*.test.ts apps/desktop/src/fork/*.test.ts) apps/web/src/components/Sidebar.logic.test.ts apps/web/src/components/Sidebar.drag.test.ts apps/web/src/components/threadActionMenu.logic.test.ts packages/contracts/src/settings.test.ts
+FORK_TESTS := $(wildcard apps/web/src/fork/*.test.ts apps/desktop/src/fork/*.test.ts apps/server/src/fork/*.test.ts) apps/server/src/orchestration-v2/QueuedRunOrder.test.ts apps/server/src/orchestration-v2/runtimeLayer.test.ts apps/web/src/components/Sidebar.logic.test.ts apps/web/src/components/Sidebar.drag.test.ts apps/web/src/components/threadActionMenu.logic.test.ts packages/contracts/src/settings.test.ts
 
 typecheck-web:
 	$(PNPM) exec vp run --filter @t3tools/web typecheck
 	$(PNPM) exec vp run --filter @t3tools/contracts typecheck
+	$(PNPM) exec vp run --filter t3 typecheck
 
 # Every TS file the fork changes relative to upstream (committed or not).
 FORK_CHANGED_TS = $$( { git diff --name-only --diff-filter=ACMR $$(git merge-base HEAD upstream/main); git ls-files --others --exclude-standard; } | grep -E '\.(ts|tsx)$$' | sort -u)
