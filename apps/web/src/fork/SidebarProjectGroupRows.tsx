@@ -2,18 +2,24 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronRightIcon, FolderIcon, PlusIcon } from "lucide-react";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 
 import { ProjectFavicon } from "../components/ProjectFavicon";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { animateSidebarLayoutChanges, sidebarListItemId } from "../components/Sidebar.logic";
 import type { SidebarProjectSnapshot } from "../sidebarProjectGrouping";
 import { cn } from "../lib/utils";
+import { useProjectHeaderDrag } from "./projectHeaderDrag";
 import type { SidebarProjectListItem } from "./sidebarProjectItems";
 
 // Project headers and their "Show more" rows are list items too, so they shift
 // with the rows during a drag. They are never picked up and never a drop target.
-function SortableSidebarProjectItem(props: { item: SidebarProjectListItem; children: ReactNode }) {
+function SortableSidebarProjectItem(props: {
+  item: SidebarProjectListItem;
+  children: ReactNode;
+  className?: string;
+  liRef?: React.RefObject<HTMLLIElement | null>;
+}) {
   const { setNodeRef, transform, transition } = useSortable({
     id: sidebarListItemId(props.item),
     disabled: { draggable: true },
@@ -21,10 +27,14 @@ function SortableSidebarProjectItem(props: { item: SidebarProjectListItem; child
   });
   return (
     <li
-      ref={setNodeRef}
+      ref={(node) => {
+        setNodeRef(node);
+        if (props.liRef) props.liRef.current = node;
+      }}
+      data-project-key={props.item.projectKey}
       data-thread-selection-safe
       data-testid={`sidebar-${props.item.kind}`}
-      className="list-none"
+      className={cn("list-none", props.className)}
       style={{
         transform: CSS.Translate.toString(transform),
         transition,
@@ -45,9 +55,20 @@ export function SidebarProjectGroupRow(props: {
 }) {
   const { item, project } = props;
   const handleNewThread = useNewThreadHandler();
+  const headerRef = useRef<HTMLLIElement | null>(null);
+  const drag = useProjectHeaderDrag({
+    projectKey: item.projectKey,
+    label: project?.displayName ?? "Other",
+    sourceRef: headerRef,
+  });
   if (item.kind === "project-header") {
     return (
-      <SortableSidebarProjectItem item={item}>
+      <SortableSidebarProjectItem
+        item={item}
+        liRef={headerRef}
+        className={drag.dragging ? "opacity-50" : ""}
+      >
+        {drag.overlay}
         <div className="group/project-header relative mx-0.5 rounded-md hover:bg-sidebar-row-hover focus-within:bg-sidebar-row-hover">
           <button
             type="button"
@@ -55,7 +76,10 @@ export function SidebarProjectGroupRow(props: {
             aria-expanded={item.expanded}
             data-thread-selection-safe
             disabled={project === null}
-            onClick={() => props.onToggle(item.projectKey)}
+            onPointerDown={drag.onPointerDown}
+            onClick={() => {
+              if (!drag.consumeClick()) props.onToggle(item.projectKey);
+            }}
             className="flex h-8 w-full cursor-pointer items-center gap-1.5 rounded-md pr-9 pl-1.5 text-left text-sm font-medium text-sidebar-foreground/85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70 disabled:cursor-default"
           >
             {project ? (
