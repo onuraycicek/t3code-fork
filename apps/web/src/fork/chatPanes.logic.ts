@@ -434,3 +434,28 @@ export function stepCycleIndex(index: number, length: number, direction: 1 | -1)
   if (length <= 0) return 0;
   return (index + direction + length) % length;
 }
+
+/**
+ * Housekeeping for tabs opened from a draft route (tracked by thread key): a
+ * tab whose thread now exists on the server was promoted and needs no tracking
+ * any more; one that is neither a live draft session nor a server thread is
+ * stale (its draft was discarded) and closes. Keys not open as tabs just drop.
+ */
+export function resolveDraftTabCleanup(input: {
+  draftTabKeys: readonly string[];
+  openKeys: ReadonlySet<string>;
+  draftSessionKeys: ReadonlySet<string>;
+  serverKeys: ReadonlySet<string>;
+}): { untrack: string[]; close: string[] } {
+  const untrack: string[] = [];
+  const close: string[] = [];
+  for (const key of input.draftTabKeys) {
+    if (!input.openKeys.has(key) || input.serverKeys.has(key)) {
+      untrack.push(key);
+    } else if (!input.draftSessionKeys.has(key)) {
+      untrack.push(key);
+      close.push(key);
+    }
+  }
+  return { untrack, close };
+}
