@@ -1,0 +1,91 @@
+/* Fork: Orca-style split chat panes. */
+:root {
+  --chat-pane-divider: #868690;
+  --chat-pane-divider-strong: #71717a;
+}
+.dark {
+  --chat-pane-divider: #3f3f46;
+  --chat-pane-divider-strong: #a1a1aa;
+}
+[data-chat-pane-resize] {
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+[data-chat-pane-resize="col"] {
+  width: 6px;
+  margin-inline: -2.5px;
+  cursor: col-resize;
+}
+[data-chat-pane-resize="row"] {
+  height: 6px;
+  margin-block: -2.5px;
+  cursor: row-resize;
+}
+[data-chat-pane-resize]::after {
+  content: "";
+  position: absolute;
+  border-radius: 1px;
+  background: var(--chat-pane-divider);
+  opacity: 0.55;
+  transition:
+    background-color 100ms ease,
+    opacity 100ms ease;
+}
+[data-chat-pane-resize="col"]::after {
+  inset-block: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+}
+[data-chat-pane-resize="row"]::after {
+  inset-inline: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+}
+[data-chat-pane-resize]:hover::after,
+[data-chat-pane-resize][data-dragging]::after {
+  background: var(--chat-pane-divider-strong);
+  opacity: 1;
+}
+[data-chat-pane-resize="col"]:hover::after,
+[data-chat-pane-resize="col"][data-dragging]::after {
+  width: 3px;
+}
+[data-chat-pane-resize="row"]:hover::after,
+[data-chat-pane-resize="row"][data-dragging]::after {
+  height: 3px;
+}
+body.chat-pane-resizing,
+body.chat-pane-dragging {
+  user-select: none;
+}
+body.chat-pane-resizing iframe,
+body.chat-pane-resizing webview,
+body.chat-pane-dragging iframe,
+body.chat-pane-dragging webview {
+  pointer-events: none;
+}
+body.chat-pane-dragging {
+  cursor: grabbing;
+}
+[data-chat-pane-drop-overlay] {
+  background: rgba(59, 130, 246, 0.2);
+  border: 2px solid rgba(59, 130, 246, 0.5);
+  border-radius: 4px;
+  transition:
+    left 80ms ease,
+    top 80ms ease,
+    width 80ms ease,
+    height 80ms ease;
+}
+[data-chat-pane-drop-label] {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(59, 130, 246);
+}

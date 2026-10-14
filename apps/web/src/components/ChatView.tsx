@@ -174,6 +174,7 @@ import { DEFAULT_INTERACTION_MODE, type ChatMessage } from "../types";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useTheme } from "../hooks/useTheme";
 import { copyThreadReference } from "../lib/copyThreadReference";
+import { useChatPane } from "../fork/chatPaneContext";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { FileMetadataThreadProvider } from "../hooks/FileMetadataThreadProvider";
@@ -473,6 +474,8 @@ export default function ChatView(props: ChatViewProps) {
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
+  // Fork: a background split pane must not own window-level input.
+  const inputOwner = useChatPane()?.focused ?? true;
   const handleNewThread = useNewThreadHandler();
   const routeThreadRef = scopeThreadRef(environmentId, threadId);
   const routeThreadKey = scopedThreadKey(routeThreadRef);
@@ -1973,8 +1976,9 @@ export default function ChatView(props: ChatViewProps) {
   const onInterruptStable = useStableCallback(onInterrupt);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- window listener for the desktop snapshot event that focuses the composer
   useEffect(
-    () => (embedded ? undefined : subscribeSnapShotComposerFocus(focusComposerStable)),
-    [embedded, focusComposerStable],
+    () =>
+      embedded || !inputOwner ? undefined : subscribeSnapShotComposerFocus(focusComposerStable),
+    [embedded, focusComposerStable, inputOwner],
   );
   const insertArtifactTemplate = (template: CodexArtifactTemplate) => {
     const composer = composerRef.current;
@@ -2263,7 +2267,7 @@ export default function ChatView(props: ChatViewProps) {
   useFocusComposerOnThreadOpen(
     activeThreadRef,
     workspaceLayoutElement,
-    !embedded,
+    !embedded && inputOwner,
     terminalUiState.terminalOpen,
     isCoarsePointer ? ignoreComposerFocus : focusComposerStable,
   );
@@ -2275,7 +2279,8 @@ export default function ChatView(props: ChatViewProps) {
       !activeThread?.id ||
       terminalUiState.terminalOpen ||
       isMobileViewport ||
-      isCoarsePointer
+      isCoarsePointer ||
+      !inputOwner
     ) {
       return;
     }
@@ -2306,6 +2311,7 @@ export default function ChatView(props: ChatViewProps) {
     embedded,
     focusComposerStable,
     isCoarsePointer,
+    inputOwner,
     isMobileViewport,
     terminalUiState.terminalOpen,
   ]);
@@ -2548,6 +2554,7 @@ export default function ChatView(props: ChatViewProps) {
     activeProjectCwd,
     onDiffPanelOpen,
     closeRightPanelSurface,
+    inputOwner,
   });
   const pullRequestSurfaceAvailable = supportsPullRequests && pullRequestPanelTarget !== null;
   const {
@@ -2901,13 +2908,15 @@ export default function ChatView(props: ChatViewProps) {
   });
 
   useChatShortcuts({
-    enabled: activeThreadId !== null && !backgroundThread,
+    // Only the focused pane of a split layout answers window-level shortcuts; an embedded
+    // side chat listens on its own composer, so it needs no pane guard.
+    enabled: (embedded || inputOwner) && activeThreadId !== null && !backgroundThread,
     embedded,
     composerElement: composerOverlayElement,
     keybindings,
     scriptKeybindings,
     getShortcutContext,
-    threadFindActive: isThreadFindActive,
+    threadFindActive: inputOwner && isThreadFindActive,
     composerRef,
     branchToolbarRef,
     closeThreadFind: () => {
@@ -2962,7 +2971,7 @@ export default function ChatView(props: ChatViewProps) {
   // A focused desktop browser page forwards these chords as menu actions.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle or close the right panel
   useEffect(() => {
-    if (embedded || backgroundThread) return;
+    if (embedded || backgroundThread || !inputOwner) return;
     return window.desktopBridge?.onMenuAction((action) => {
       if (action === "rightPanel.toggle") toggleRightPanelStable();
       else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
@@ -2971,12 +2980,14 @@ export default function ChatView(props: ChatViewProps) {
   }, [
     embedded,
     backgroundThread,
+    inputOwner,
     toggleRightPanelStable,
     toggleRightPanelMaximizedStable,
     closeActiveRightPanelSurfaceStable,
   ]);
 
-  usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
+  // Fork: with no thread the paste handler stands down, so background panes ignore pastes.
+  usePasteToFocusComposer(embedded || !inputOwner ? null : activeThreadId, composerRef);
   // A delegated task is a remote thread's subagent.
   const isSubagentThread =
     activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
