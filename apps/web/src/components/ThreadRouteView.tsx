@@ -4,6 +4,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import ChatView from "./ChatView";
+import { ChatPanes } from "../fork/ChatPanes";
+import { useChatPaneRoute } from "../fork/useChatPaneRoute";
 import { resolveDraftPromotionNavigationTarget, threadHasStarted } from "./ChatView.logic";
 import { waitForDraftHeroTransition } from "./chat/draftHeroTransition";
 import { SidebarInset } from "./ui/sidebar";
@@ -149,8 +151,11 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
     finalizePromotedDraftThreadByRef(target.threadRef);
   }, [draftThread, serverThreadStarted, target]);
 
+  const paneRoot = useChatPaneRoute(target, renderState);
   let view: React.ReactNode = null;
-  if (target.kind === "draft") {
+  if (paneRoot !== null) {
+    view = <ChatPanes root={paneRoot} />;
+  } else if (target.kind === "draft") {
     if (draftSession) {
       view = (
         <ChatView
