@@ -3856,7 +3856,6 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
         runId: (yield* runFor("queued")).id,
         beforeRunId: null,
       });
-      yield* dispatch("late-wake", true);
       assert.isUndefined((yield* runFor("early-wake")).workStartedAt);
 
       const startedRunIds = yield* Queue.unbounded<RunId>();
@@ -3900,6 +3899,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
       yield* settle("early-wake", DateTime.add(now, { seconds: 1 }));
       assert.equal(yield* Queue.take(startedRunIds), (yield* runFor("queued")).id);
       assert.isUndefined((yield* runFor("queued")).workStartedAt);
+      // fork: wakes go ahead of queued user messages, so this one arrives behind the running prompt.
+      yield* dispatch("late-wake", true);
 
       const queuedStartedAt = DateTime.add(now, { minutes: 10 });
       yield* settle("queued", queuedStartedAt);
