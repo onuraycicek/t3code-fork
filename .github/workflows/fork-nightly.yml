@@ -172,9 +172,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow list --all --json path,state --jq '.[] | select(.state == "active") | .path' |
+          gh workflow list --repo "$GITHUB_REPOSITORY" --all --json path,state --jq '.[] | select(.state == "active") | .path' |
             grep -v '^\.github/workflows/fork-nightly\.yml$' |
-            while read -r path; do gh workflow disable "$(basename "$path")" || true; done
+            while read -r path; do gh workflow disable --repo "$GITHUB_REPOSITORY" "$(basename "$path")" || true; done
 
   build:
     needs: sync
@@ -225,9 +225,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow list --all --json path,state --jq '.[] | select(.state == "active") | .path' |
+          gh workflow list --repo "$GITHUB_REPOSITORY" --all --json path,state --jq '.[] | select(.state == "active") | .path' |
             grep -v '^\.github/workflows/fork-nightly\.yml$' |
-            while read -r path; do gh workflow disable "$(basename "$path")" || true; done
+            while read -r path; do gh workflow disable --repo "$GITHUB_REPOSITORY" "$(basename "$path")" || true; done
 
       - name: Publish prerelease
         env:
@@ -248,7 +248,7 @@ jobs:
               echo "Do not switch back to an older official build until it includes them."
             fi
           } > "$RUNNER_TEMP/notes.md"
-          gh release create "v$VERSION" \
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
             --prerelease \
             --target "${{ needs.sync.outputs.sha }}" \
             --title "Fork nightly $VERSION" \
@@ -259,6 +259,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release list --limit 100 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' |
             tail -n +11 |
-            while read -r tag; do gh release delete "$tag" --yes --cleanup-tag || true; done
+            while read -r tag; do gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true; done
