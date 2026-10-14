@@ -30,6 +30,7 @@ import {
   type PaneEdge,
 } from "./chatPanes.logic";
 import { freezeChatPaneHistory, useChatPanesStore } from "./chatPanesStore";
+import { SidebarVisibleThreads } from "./SidebarVisibleThreads";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { cn, isMacPlatform } from "../lib/utils";
 import { readLocalApi } from "../localApi";
@@ -450,6 +451,7 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden" data-chat-panes>
+      <SidebarVisibleThreads root={root} focusedPaneId={focusedPaneId} />
       <PaneNode node={root} path="" context={context} edges={ROOT_EDGES} />
       {drag?.overlay
         ? createPortal(
