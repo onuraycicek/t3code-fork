@@ -202,17 +202,8 @@ jobs:
         with:
           node-version: 24
 
-      - name: Locate pnpm store
-        id: pnpm_store
-        run: echo "path=$(corepack pnpm@11.10.0 store path --silent)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm_store.outputs.path }}
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: pnpm-store-${{ runner.os }}-
-
+      # No pnpm store cache on macOS: restoring the ~1.6 GB store took about as
+      # long as a fresh install (75 s restore + 169 s install measured).
       # Electron and electron-builder download their binaries on every build.
       - name: Cache Electron downloads
         uses: actions/cache@v4
