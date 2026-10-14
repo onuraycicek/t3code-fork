@@ -17,6 +17,7 @@ import {
   buildCycleOrder,
   collectLeaves,
   dropPreviewRect,
+  findLeaf,
   findLeafByThreadKey,
   leafActiveThread,
   resolvePaneDropZone,
@@ -97,18 +98,37 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
     [openThread],
   );
 
+  // After a close the route follows the surviving tab. With nothing left open,
+  // leave the closed thread's route (go home) so opening it again from the
+  // sidebar is a real route change that adds a fresh tab.
+  const followClose = useCallback(
+    (survivor: ScopedThreadRef | null) => {
+      if (survivor) {
+        openThread(survivor, true);
+        return;
+      }
+      const state = useChatPanesStore.getState();
+      const focused =
+        state.root && state.focusedPaneId ? findLeaf(state.root, state.focusedPaneId) : null;
+      if (!focused || leafActiveThread(focused) === null) {
+        void navigate({ to: "/", replace: true });
+      }
+    },
+    [navigate, openThread],
+  );
+
   const closePane = useCallback(
     (paneId: ChatPaneId) => {
-      openThread(useChatPanesStore.getState().closePane(paneId), true);
+      followClose(useChatPanesStore.getState().closePane(paneId));
     },
-    [openThread],
+    [followClose],
   );
 
   const closeTabs = useCallback(
     (threadKeys: readonly string[], keepKey?: string) => {
-      openThread(useChatPanesStore.getState().closeTabs(threadKeys, keepKey), true);
+      followClose(useChatPanesStore.getState().closeTabs(threadKeys, keepKey));
     },
-    [openThread],
+    [followClose],
   );
 
   const activateTab = useCallback(
