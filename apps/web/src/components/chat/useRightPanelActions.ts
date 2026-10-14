@@ -62,6 +62,8 @@ interface RightPanelActionsInput {
   readonly explicitDiffOpenRef: { current: ScopedThreadRef | null };
   readonly onDiffPanelOpen: (() => void) | undefined;
   readonly closeRightPanelSurface: (surface: RightPanelSurface) => void;
+  /** Fork: false for a background split pane, which must not answer preview actions. */
+  readonly inputOwner?: boolean;
 }
 
 /**
@@ -316,15 +318,16 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     onDiffPanelOpen?.();
   });
   const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
+  const inputOwner = input.inputOwner ?? true;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the preview action bus to toggle the preview panel
   useEffect(
     () =>
-      embedded
+      embedded || !inputOwner
         ? undefined
         : subscribePreviewAction((action) => {
             if (action === "toggle-panel") togglePreviewPanelStable();
           }),
-    [embedded, togglePreviewPanelStable],
+    [embedded, inputOwner, togglePreviewPanelStable],
   );
 
   const shortcuts = {
