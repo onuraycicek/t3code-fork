@@ -220,6 +220,15 @@ jobs:
           export APPLE_API_KEY="$key_path"
           corepack pnpm@11.10.0 dist:desktop:dmg:arm64 --build-version "${{ steps.version.outputs.version }}" --signed
 
+      # The release tag (v*.*.*) would also match upstream's release.yml.
+      - name: Disable upstream workflows before tagging
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow list --all --json path,state --jq '.[] | select(.state == "active") | .path' |
+            grep -v '^\.github/workflows/fork-nightly\.yml$' |
+            while read -r path; do gh workflow disable "$(basename "$path")" || true; done
+
       - name: Publish prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
