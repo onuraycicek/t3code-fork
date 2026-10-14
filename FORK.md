@@ -23,7 +23,7 @@ Two features on top of upstream T3 Code:
   split" makes a new pane. Tabs: middle-click/x close, right-click menu (close,
   others, to the right, all), drag to reorder, move between panes, or drop on a
   pane edge to split. `Cmd+Shift+W` closes the tab, `Ctrl+Tab` / `Ctrl+Shift+Tab`
-  walk tabs of all panes in most-recently-used order (release Ctrl to commit),
+  move to the next / previous tab of the focused pane (never another pane),
   `Ctrl+1..9` (`Alt+1..9` off macOS) jumps to tab N. Layout persisted v2 (v1
   single-thread panes migrate to one tab).
 
