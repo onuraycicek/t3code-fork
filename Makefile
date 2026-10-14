@@ -9,7 +9,7 @@ PNPM := corepack pnpm@11.10.0
 # Separate data home so the fork never touches the official ~/.t3 state.
 FORK_HOME ?= $(HOME)/.t3-fork
 
-.PHONY: install seed-dev-db dev dev-desktop typecheck typecheck-web lint-web test-fork build-desktop build-desktop-signed install-app
+.PHONY: install seed-dev-db dev dev-desktop typecheck typecheck-web lint-web test-fork build-desktop build-desktop-signed install-app install-latest
 
 install:
 	$(PNPM) install
@@ -96,6 +96,23 @@ install-app:
 	ditto "release/app/T3 Code (Nightly).app" "$(FORK_APP)"
 	# Developer ID builds (CI and build-desktop-signed) keep their notarized
 	# signature; only unsigned local builds get the Apple Development identity.
-	codesign -dv "$(FORK_APP)" 2>&1 | grep -q "Authority=Developer ID Application" || \
+	codesign -dvv "$(FORK_APP)" 2>&1 | grep -q "Authority=Developer ID Application" || \
 		codesign --force --deep --sign "$(FORK_SIGN_IDENTITY)" "$(FORK_APP)"
 	codesign --verify --deep --strict "$(FORK_APP)"
+
+# Downloads the newest CI prerelease (Developer ID signed + notarized, update
+# feed = this repo), quits the running fork app, replaces it and relaunches.
+# Run from Terminal, not from inside the app. After this, updates arrive by
+# themselves through the app's built-in updater.
+install-latest:
+	/bin/rm -rf "$(TMPDIR)t3fork-latest" && mkdir -p "$(TMPDIR)t3fork-latest"
+	gh release download --repo $(FORK_UPDATE_REPOSITORY) --pattern '*-arm64.zip' --dir "$(TMPDIR)t3fork-latest" \
+		"$$(gh release list --repo $(FORK_UPDATE_REPOSITORY) --limit 1 --json tagName --jq '.[0].tagName')"
+	ditto -x -k "$(TMPDIR)t3fork-latest/"*-arm64.zip "$(TMPDIR)t3fork-latest/app"
+	codesign -dvv "$(TMPDIR)t3fork-latest/app/T3 Code (Nightly).app" 2>&1 | grep -q "Authority=Developer ID Application"
+	-osascript -e 'tell application "$(FORK_APP)" to quit'
+	@for i in $$(seq 1 30); do pgrep -f "$(FORK_APP)/Contents/MacOS" >/dev/null || break; sleep 1; done
+	/bin/rm -rf "$(FORK_APP)"
+	ditto "$(TMPDIR)t3fork-latest/app/T3 Code (Nightly).app" "$(FORK_APP)"
+	codesign --verify --deep --strict "$(FORK_APP)"
+	open "$(FORK_APP)"
