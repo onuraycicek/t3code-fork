@@ -3,6 +3,7 @@ import {
   CheckIcon,
   CircleAlertIcon,
   CircleDashedIcon,
+  CircleDotDashedIcon,
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
   XIcon,
@@ -12,7 +13,14 @@ import type { ComponentProps, ReactNode } from "react";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
 import { cn } from "../lib/utils";
 
-export type CompactRowStatusIcon = "working" | "input" | "approval" | "failed" | "done" | "woke";
+export type CompactRowStatusIcon =
+  | "working"
+  | "waiting"
+  | "input"
+  | "approval"
+  | "failed"
+  | "done"
+  | "woke";
 
 /**
  * One-line thread row used under a project header in grouped mode. Everything is
@@ -68,6 +76,8 @@ export function SidebarCompactThreadRow(props: {
             >
               {icon === "working" ? (
                 <CircleDashedIcon aria-hidden className={iconClass} />
+              ) : icon === "waiting" ? (
+                <CircleDotDashedIcon aria-hidden className={iconClass} />
               ) : icon === "input" ? (
                 <MessageCircleQuestionIcon aria-hidden className={iconClass} />
               ) : icon === "approval" ? (
