@@ -51,6 +51,7 @@ files only carry small hook-up edits:
 - `SettingsPanels.tsx`: renders `<ForkSettingsRows />` (setting stored in
   `fork/forkPrefsStore.ts`, not in the upstream settings schema).
 - `threadActionMenu.logic.ts`, `contextMenuFallback.ts`: "Open in split" item.
+- `desktopUpdate.logic.ts`: release links use `fork/forkRepo.ts` (tests updated).
 - Server: `Orchestrator.ts` (`forkQueueHold` in `startNextQueuedRun`),
   `QueuedRunOrder.ts` (`forkWakeFirst`), `server.ts` (sweep layer),
   `runtimeLayer.test.ts` (one wake dispatched later).
