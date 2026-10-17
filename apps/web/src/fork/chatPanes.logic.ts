@@ -252,10 +252,6 @@ export function dropPreviewRect(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tabs
-// ---------------------------------------------------------------------------
-
 export const THREAD_HISTORY_LIMIT = 100;
 
 /** Moves `threadKey` to the front of a recency list. */
