@@ -3,7 +3,7 @@ import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { createModelSelection } from "@t3tools/shared/model";
 import { ArrowRightLeftIcon, ScanSearchIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { ModelPickerContent } from "../components/chat/ModelPickerContent";
 import { Button } from "../components/ui/button";
@@ -20,7 +20,7 @@ import {
   deriveProviderInstanceEntries,
   sortProviderInstanceEntries,
 } from "../providerInstances";
-import { useEnvironments } from "../state/environments";
+import { useEnvironmentProviders } from "../state/environments";
 import { useThreadProjection, useThreadShell } from "../state/entities";
 import { EMPTY_SERVER_PROVIDERS } from "../state/server";
 import { buildResponseHandoffPrompt, type ResponseHandoffKind } from "./responseHandoff.logic";
@@ -106,27 +106,23 @@ function ResponseHandoffPicker(props: {
   const { threadRef, kind } = props;
   const shell = useThreadShell(threadRef);
   const projection = useThreadProjection(threadRef)?.projection ?? null;
-  const { environments } = useEnvironments();
+  const providersByEnvironment = useEnvironmentProviders();
   const settings = useEnvironmentSettings(threadRef.environmentId);
   const handleNewThread = useNewThreadHandler();
-  const providers =
-    environments.find((environment) => environment.environmentId === threadRef.environmentId)
-      ?.serverConfig?.providers ?? EMPTY_SERVER_PROVIDERS;
+  const providers = providersByEnvironment.get(threadRef.environmentId) ?? EMPTY_SERVER_PROVIDERS;
   const current: ModelSelection | null = shell?.modelSelection ?? null;
-  const entries = useMemo(
-    () =>
-      sortProviderInstanceEntries(
-        applyProviderInstanceSettings(
-          deriveProviderInstanceEntries(providers),
-          settings,
-          shell?.projectId ?? null,
-        ),
-      ),
-    [providers, settings, shell?.projectId],
+  const entries = sortProviderInstanceEntries(
+    applyProviderInstanceSettings(
+      deriveProviderInstanceEntries(providers),
+      settings,
+      shell?.projectId ?? null,
+    ),
   );
-  const modelOptions = useMemo(
-    () => getCustomModelOptionsByInstance(settings, providers, current?.instanceId, current?.model),
-    [settings, providers, current?.instanceId, current?.model],
+  const modelOptions = getCustomModelOptionsByInstance(
+    settings,
+    providers,
+    current?.instanceId,
+    current?.model,
   );
   const firstEntry = entries[0];
   const activeInstanceId: ProviderInstanceId | undefined =
