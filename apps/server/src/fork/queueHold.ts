@@ -9,18 +9,21 @@ import * as Effect from "effect/Effect";
 /**
  * Fork: "queue" means "after the agent is done", not "after the current turn".
  *
- * An agent that starts background work (a subagent, a monitor, a background
- * command such as a build watcher) ends its turn and is woken again when that
- * work finishes. Upstream starts the next queued message as soon as the turn
- * ends, so a queued message lands between those parts. This holds a queued
- * user message while the thread's provider threads still report pending
- * background work, and lets the agent's wake turns go first.
+ * An agent that hands work to a subagent (or another task that reports back)
+ * ends its turn and is woken again with the result. Upstream starts the next
+ * queued message as soon as the turn ends, so a queued message lands between
+ * those parts. This holds a queued user message while such work is pending,
+ * and lets the agent's wake turns go first.
  *
- * Background commands carry no "finishes soon" vs "runs forever" signal (a dev
- * server and a build watcher look the same), so they hold the queue only for
- * FORK_QUEUE_COMMAND_WAIT_MS after the agent went idle.
+ * Claude reports no "finishes" vs "runs forever" signal, so only work that
+ * always reports back holds the queue: subagents and other background tasks.
+ * Monitors (watchers that wake the agent repeatedly) and background commands
+ * (dev servers, waits) never hold it, and the hold ends after
+ * FORK_QUEUE_HOLD_MAX_MS of idle time so a lost task cannot strand a message.
  */
-export const FORK_QUEUE_COMMAND_WAIT_MS = 15 * 60_000;
+export const FORK_QUEUE_HOLD_MAX_MS = 10 * 60_000;
+
+const HOLDING_KINDS: ReadonlySet<string> = new Set(["subagent", "background_task"]);
 
 type HoldProjection = Pick<
   OrchestrationV2ThreadProjection,
@@ -67,11 +70,12 @@ export function forkQueueHeldForBackgroundWork(
 ): boolean {
   const message = projection.messages.find((candidate) => candidate.id === queuedRun.userMessageId);
   if (message === undefined || forkIsAgentWake(message)) return false;
-  const tasks = projection.providerThreads.flatMap((thread) => thread.pendingBackgroundTasks ?? []);
-  if (tasks.length === 0) return false;
-  if (tasks.some((task) => task.kind !== "command")) return true;
+  const holding = projection.providerThreads.some((thread) =>
+    (thread.pendingBackgroundTasks ?? []).some((task) => HOLDING_KINDS.has(task.kind)),
+  );
+  if (!holding) return false;
   const idleSince = idleSinceMs(projection.runs);
-  return idleSince === null || nowMs - idleSince < FORK_QUEUE_COMMAND_WAIT_MS;
+  return idleSince === null || nowMs - idleSince < FORK_QUEUE_HOLD_MAX_MS;
 }
 
 /** The orchestrator hook: `forkQueueHeldForBackgroundWork` at the current time. */
