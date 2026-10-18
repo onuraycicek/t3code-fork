@@ -18,7 +18,7 @@ function SortableSidebarProjectItem(props: {
   item: SidebarProjectListItem;
   children: ReactNode;
   className?: string;
-  liRef?: React.RefObject<HTMLLIElement | null>;
+  onNode?: (node: HTMLLIElement | null) => void;
 }) {
   const { setNodeRef, transform, transition } = useSortable({
     id: sidebarListItemId(props.item),
@@ -29,7 +29,7 @@ function SortableSidebarProjectItem(props: {
     <li
       ref={(node) => {
         setNodeRef(node);
-        if (props.liRef) props.liRef.current = node;
+        props.onNode?.(node);
       }}
       data-project-key={props.item.projectKey}
       data-thread-selection-safe
@@ -65,7 +65,9 @@ export function SidebarProjectGroupRow(props: {
     return (
       <SortableSidebarProjectItem
         item={item}
-        liRef={headerRef}
+        onNode={(node) => {
+          headerRef.current = node;
+        }}
         className={drag.dragging ? "opacity-50" : ""}
       >
         {drag.overlay}
