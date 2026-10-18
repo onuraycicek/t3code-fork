@@ -28,10 +28,10 @@ Two features on top of upstream T3 Code:
   single-thread panes migrate to one tab).
 
 - **Queue waits for the agent to finish.** A queued message is held while the
-  agent still has background work that will wake it (subagents, monitors,
-  background commands such as a build watcher), and the agent's wake turns go
-  ahead of queued user messages. Background commands hold the queue for at most
-  15 minutes after the agent went idle (a dev server never wakes it). Steer
+  agent waits on work that reports back (a subagent or another background
+  task), and the agent's wake turns go ahead of queued user messages. Monitors
+  and background commands never hold the queue (a watcher or dev server never
+  finishes), and any hold ends 10 minutes after the agent went idle. Steer
   still sends at once. Server code: `apps/server/src/fork/queueHold.ts` (rule),
   `queueHoldSweep.ts` (30 s re-check when work ends without a wake).
 
