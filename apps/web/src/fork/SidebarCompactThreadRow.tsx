@@ -44,7 +44,7 @@ export function SidebarCompactThreadRow(props: {
   statusIcon: CompactRowStatusIcon | null;
   statusClassName: string | undefined;
   draftIndicator: ReactNode;
-  timeLabel: string;
+  timeLabel: ReactNode;
   /** Hover actions; each is omitted when the row does not support it. */
   onDiscardDraft: ComponentProps<"button">["onClick"];
   snoozeButton: ReactNode;

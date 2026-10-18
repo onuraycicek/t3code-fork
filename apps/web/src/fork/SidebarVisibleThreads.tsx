@@ -1,5 +1,3 @@
-import { useMemo } from "react";
-
 import { collectLeaves, type ChatPaneId, type ChatPaneNode } from "./chatPanes.logic";
 
 /**
@@ -15,17 +13,14 @@ export function SidebarVisibleThreads({
   root: ChatPaneNode;
   focusedPaneId: ChatPaneId | null;
 }) {
-  const css = useMemo(() => {
-    const keys = collectLeaves(root)
-      .filter((leaf) => leaf.id !== focusedPaneId && leaf.activeKey !== null)
-      .map((leaf) => leaf.activeKey as string);
-    if (keys.length === 0) return "";
-    const selector = [...new Set(keys)]
-      .map((key) => `[data-thread-item="${CSS.escape(key)}"] [data-testid="sidebar-row-card"]`)
-      .join(",\n");
-    return `${selector} {\n  background-color: color-mix(in srgb, var(--foreground) 6%, transparent);\n}`;
-  }, [root, focusedPaneId]);
+  const keys = collectLeaves(root)
+    .filter((leaf) => leaf.id !== focusedPaneId && leaf.activeKey !== null)
+    .map((leaf) => leaf.activeKey as string);
+  if (keys.length === 0) return null;
+  const selector = [...new Set(keys)]
+    .map((key) => `[data-thread-item="${CSS.escape(key)}"] [data-testid="sidebar-row-card"]`)
+    .join(",\n");
+  const css = `${selector} {\n  background-color: color-mix(in srgb, var(--foreground) 6%, transparent);\n}`;
 
-  if (!css) return null;
   return <style data-fork-sidebar-visible-threads="">{css}</style>;
 }
