@@ -9,8 +9,7 @@ import { forkParked } from "../serverActivation.ts";
  * Fork: re-checks idle threads with queued messages every 30 s. A queued
  * message held by `forkQueueHeldForBackgroundWork` normally starts when the
  * agent's wake turn ends, but background work can also end without a wake
- * (killed task, closed session) and a background command's wait expires on a
- * timer; this sweep starts the queue in those cases. Threads with a running
+ * (killed task, closed session) and the hold expires on a timer; this sweep starts the queue in those cases. Threads with a running
  * turn or a held (restart, failure) queue are skipped by the orchestrator.
  */
 export const layer = Layer.effectDiscard(
