@@ -2,7 +2,7 @@ import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
 import { queuedRunsInDeliveryOrder } from "../orchestration-v2/QueuedRunOrder.ts";
-import { FORK_QUEUE_COMMAND_WAIT_MS, forkQueueHeldForBackgroundWork } from "./queueHold.ts";
+import { FORK_QUEUE_HOLD_MAX_MS, forkQueueHeldForBackgroundWork } from "./queueHold.ts";
 
 const IDLE_AT = Date.parse("2026-10-15T10:00:00.000Z");
 
@@ -57,24 +57,21 @@ describe("fork queue hold", () => {
     expect(forkQueueHeldForBackgroundWork(projection([]), userRun, IDLE_AT)).toBe(false);
   });
 
-  it("holds a user message while a subagent or monitor can still wake the agent", () => {
+  it("holds a user message while a subagent can still report back, up to the cap", () => {
+    const subagent = projection([{ kind: "subagent" }]);
+    expect(forkQueueHeldForBackgroundWork(subagent, userRun, IDLE_AT + 60_000)).toBe(true);
     expect(
-      forkQueueHeldForBackgroundWork(
-        projection([{ kind: "subagent" }]),
-        userRun,
-        IDLE_AT + 3_600_000,
-      ),
-    ).toBe(true);
-    expect(
-      forkQueueHeldForBackgroundWork(projection([{ kind: "monitor" }]), userRun, IDLE_AT),
-    ).toBe(true);
+      forkQueueHeldForBackgroundWork(subagent, userRun, IDLE_AT + FORK_QUEUE_HOLD_MAX_MS),
+    ).toBe(false);
   });
 
-  it("holds a user message behind a background command only for the wait window", () => {
-    const commands = projection([{ kind: "command" }]);
-    expect(forkQueueHeldForBackgroundWork(commands, userRun, IDLE_AT + 60_000)).toBe(true);
+  it("never holds a user message for monitors or background commands", () => {
     expect(
-      forkQueueHeldForBackgroundWork(commands, userRun, IDLE_AT + FORK_QUEUE_COMMAND_WAIT_MS),
+      forkQueueHeldForBackgroundWork(
+        projection([{ kind: "monitor" }, { kind: "command" }]),
+        userRun,
+        IDLE_AT,
+      ),
     ).toBe(false);
   });
 
