@@ -1,5 +1,5 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { isMacPlatform } from "../lib/utils";
@@ -45,13 +45,10 @@ export function useChatPaneRoute(
   const serverThreadId = target.kind === "server" ? target.threadRef.threadId : null;
   const routeEnvironmentId = serverEnvironmentId ?? draftEnvironmentId;
   const routeThreadId = serverThreadId ?? draftThreadId;
-  const routeRef = useMemo(
-    () =>
-      routeEnvironmentId !== null && routeThreadId !== null
-        ? { environmentId: routeEnvironmentId, threadId: routeThreadId }
-        : null,
-    [routeEnvironmentId, routeThreadId],
-  );
+  const routeRef =
+    routeEnvironmentId !== null && routeThreadId !== null
+      ? { environmentId: routeEnvironmentId, threadId: routeThreadId }
+      : null;
   const routeThreadKey = routeRef ? scopedThreadKey(routeRef) : null;
   const latestTargetRef = useRef(target);
   const latestRouteRef = useRef(routeRef);
@@ -66,7 +63,11 @@ export function useChatPaneRoute(
     // A draft route has no server thread to wait for: its session is the proof.
     if (!ref || (latest.kind === "server" && renderState === "missing")) return;
     useChatPanesStore.getState().syncRouteThread(ref, { draft: latest.kind === "draft" });
-  }, [renderState, routeThreadKey]);
+  }, [
+    renderState,
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- Only a route change syncs; the latest route is read from the ref.
+    routeThreadKey,
+  ]);
 
   useEffect(() => {
     if (hasPaneLayout || target.kind !== "server" || renderState !== "ready") return;
@@ -85,13 +86,7 @@ export function useChatPaneRoute(
     return () => window.removeEventListener("keydown", handler, true);
   }, [hasPaneLayout, renderState, target.kind]);
 
-  const seedRoot = useMemo(
-    () =>
-      routeEnvironmentId !== null && routeThreadId !== null
-        ? createLeaf(SEED_PANE_ID, [{ environmentId: routeEnvironmentId, threadId: routeThreadId }])
-        : null,
-    [routeEnvironmentId, routeThreadId],
-  );
   if (routeRef === null) return null;
+  const seedRoot = createLeaf(SEED_PANE_ID, [routeRef]);
   return paneRoot ?? (target.kind === "draft" || renderState === "ready" ? seedRoot : null);
 }
