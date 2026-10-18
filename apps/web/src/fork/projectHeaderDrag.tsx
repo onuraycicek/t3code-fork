@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { useForkPrefsStore } from "./forkPrefsStore";
@@ -72,99 +66,95 @@ export function useProjectHeaderDrag(input: {
 
   useEffect(() => () => cleanupRef.current?.(), []);
 
-  const onPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      const source = sourceRef.current;
-      if (event.button !== 0 || source === null) return;
-      startRef.current = { x: event.clientX, y: event.clientY };
-      let active = false;
-      let geometry: DropGeometry = { keys: [], groups: [] };
-      let target = -1;
+  const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    const source = sourceRef.current;
+    if (event.button !== 0 || source === null) return;
+    startRef.current = { x: event.clientX, y: event.clientY };
+    let active = false;
+    let geometry: DropGeometry = { keys: [], groups: [] };
+    let target = -1;
 
-      const finish = () => {
-        window.removeEventListener("pointermove", onMove, true);
-        window.removeEventListener("pointerup", onUp, true);
-        window.removeEventListener("pointercancel", onCancel, true);
-        window.removeEventListener("keydown", onKey, true);
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-        cleanupRef.current = null;
-        startRef.current = null;
-        setSession(null);
-      };
-      const onMove = (move: PointerEvent) => {
-        const start = startRef.current;
-        if (start === null) return;
-        if (!active) {
-          if (Math.hypot(move.clientX - start.x, move.clientY - start.y) < DRAG_THRESHOLD_PX)
-            return;
-          active = true;
-          document.body.style.userSelect = "none";
-          document.body.style.cursor = "grabbing";
-        }
-        geometry = groupGeometry(source);
-        const from = geometry.keys.indexOf(projectKey);
-        const index = projectDropIndex(geometry.groups, move.clientY);
-        // Dropping next to itself changes nothing: show no line.
-        const noop = index === from || index === from + 1;
-        target = noop ? -1 : index;
-        const rect = source.getBoundingClientRect();
-        const lineTop =
-          index >= geometry.groups.length
-            ? (geometry.groups.at(-1)?.bottom ?? rect.bottom)
-            : geometry.groups[index]!.top;
-        setSession({
-          x: move.clientX,
-          y: move.clientY,
-          line: noop ? null : { top: lineTop, left: rect.left, width: rect.width },
-        });
-      };
-      const onUp = () => {
-        if (active) {
-          suppressClickRef.current = true;
-          window.setTimeout(() => {
-            suppressClickRef.current = false;
-          }, 0);
-          const from = geometry.keys.indexOf(projectKey);
-          if (target !== -1 && from !== -1) {
-            const store = useForkPrefsStore.getState();
-            const toIndex = target > from ? target - 1 : target;
-            const next = moveProjectKey(
-              store.sidebarProjectOrder,
-              geometry.keys,
-              projectKey,
-              toIndex,
-            );
-            if (next !== store.sidebarProjectOrder) store.setSidebarProjectOrder(next);
-          }
-        }
-        finish();
-      };
-      const onCancel = () => finish();
-      const onKey = (key: KeyboardEvent) => {
-        if (key.key !== "Escape" || !active) return;
-        key.preventDefault();
-        key.stopPropagation();
+    const finish = () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("pointercancel", onCancel, true);
+      window.removeEventListener("keydown", onKey, true);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      cleanupRef.current = null;
+      startRef.current = null;
+      setSession(null);
+    };
+    const onMove = (move: PointerEvent) => {
+      const start = startRef.current;
+      if (start === null) return;
+      if (!active) {
+        if (Math.hypot(move.clientX - start.x, move.clientY - start.y) < DRAG_THRESHOLD_PX) return;
+        active = true;
+        document.body.style.userSelect = "none";
+        document.body.style.cursor = "grabbing";
+      }
+      geometry = groupGeometry(source);
+      const from = geometry.keys.indexOf(projectKey);
+      const index = projectDropIndex(geometry.groups, move.clientY);
+      // Dropping next to itself changes nothing: show no line.
+      const noop = index === from || index === from + 1;
+      target = noop ? -1 : index;
+      const rect = source.getBoundingClientRect();
+      const lineTop =
+        index >= geometry.groups.length
+          ? (geometry.groups.at(-1)?.bottom ?? rect.bottom)
+          : geometry.groups[index]!.top;
+      setSession({
+        x: move.clientX,
+        y: move.clientY,
+        line: noop ? null : { top: lineTop, left: rect.left, width: rect.width },
+      });
+    };
+    const onUp = () => {
+      if (active) {
         suppressClickRef.current = true;
         window.setTimeout(() => {
           suppressClickRef.current = false;
         }, 0);
-        finish();
-      };
-      cleanupRef.current = finish;
-      window.addEventListener("pointermove", onMove, true);
-      window.addEventListener("pointerup", onUp, true);
-      window.addEventListener("pointercancel", onCancel, true);
-      window.addEventListener("keydown", onKey, true);
-    },
-    [projectKey, sourceRef],
-  );
+        const from = geometry.keys.indexOf(projectKey);
+        if (target !== -1 && from !== -1) {
+          const store = useForkPrefsStore.getState();
+          const toIndex = target > from ? target - 1 : target;
+          const next = moveProjectKey(
+            store.sidebarProjectOrder,
+            geometry.keys,
+            projectKey,
+            toIndex,
+          );
+          if (next !== store.sidebarProjectOrder) store.setSidebarProjectOrder(next);
+        }
+      }
+      finish();
+    };
+    const onCancel = () => finish();
+    const onKey = (key: KeyboardEvent) => {
+      if (key.key !== "Escape" || !active) return;
+      key.preventDefault();
+      key.stopPropagation();
+      suppressClickRef.current = true;
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 0);
+      finish();
+    };
+    cleanupRef.current = finish;
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+    window.addEventListener("keydown", onKey, true);
+  };
 
-  const consumeClick = useCallback(() => {
+  const consumeClick = () => {
     const value = suppressClickRef.current;
     suppressClickRef.current = false;
     return value;
-  }, []);
+  };
 
   const overlay =
     session === null
