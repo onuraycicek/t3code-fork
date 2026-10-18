@@ -2312,7 +2312,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         statusIcon={topStatus?.icon === "done" || topStatus?.icon == null ? null : topStatus.icon}
         statusClassName={topStatus?.className}
         draftIndicator={draftIndicator}
-        timeLabel={threadTimeLabel(thread)}
+        timeLabel={<RelativeTimeLabel timestamp={threadTimeTimestamp(thread)} />}
         onDiscardDraft={hasUnsentDraft ? handleDiscardDraftClick : undefined}
         snoozeOpen={snoozeMenuOpen}
         snoozeButton={
