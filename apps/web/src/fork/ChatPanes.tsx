@@ -2,15 +2,7 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { PanelBottomIcon, PanelRightIcon, XIcon } from "lucide-react";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
 import {
@@ -80,83 +72,65 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
   const navigate = useNavigate();
   const focusedPaneId = useChatPanesStore((state) => state.focusedPaneId);
   const [drag, setDrag] = useState<TabDragState | null>(null);
-  const leaves = useMemo(() => collectLeaves(root), [root]);
+  const leaves = collectLeaves(root);
   const draftTabKeys = useChatPanesStore((state) => state.draftTabKeys);
   const draftThreadKeys = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
   const serverThreadRefs = useThreadRefs();
 
-  const openThread = useCallback(
-    (threadRef: ScopedThreadRef | null, replace = false) => {
-      if (!threadRef) return;
-      // A tab that is still a draft lives on the draft route.
-      const draftId = draftRouteIdForTab(threadRef);
-      if (draftId) {
-        void navigate({ to: "/draft/$draftId", params: { draftId }, replace });
-        return;
-      }
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(threadRef),
-        replace,
-      });
-    },
-    [navigate],
-  );
+  const openThread = (threadRef: ScopedThreadRef | null, replace = false) => {
+    if (!threadRef) return;
+    // A tab that is still a draft lives on the draft route.
+    const draftId = draftRouteIdForTab(threadRef);
+    if (draftId) {
+      void navigate({ to: "/draft/$draftId", params: { draftId }, replace });
+      return;
+    }
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(threadRef),
+      replace,
+    });
+  };
 
-  const focusPane = useCallback(
-    (leaf: ChatPaneLeaf) => {
-      const store = useChatPanesStore.getState();
-      if (store.focusedPaneId === leaf.id) return;
-      store.focusPane(leaf.id);
-      openThread(leafActiveThread(leaf));
-    },
-    [openThread],
-  );
+  const focusPane = (leaf: ChatPaneLeaf) => {
+    const store = useChatPanesStore.getState();
+    if (store.focusedPaneId === leaf.id) return;
+    store.focusPane(leaf.id);
+    openThread(leafActiveThread(leaf));
+  };
 
   // After a close the route follows the surviving tab. With nothing left open,
   // leave the closed thread's route (go home) so opening it again from the
   // sidebar is a real route change that adds a fresh tab.
-  const followClose = useCallback(
-    (survivor: ScopedThreadRef | null) => {
-      if (survivor) {
-        openThread(survivor, true);
-        return;
-      }
-      const state = useChatPanesStore.getState();
-      const focused =
-        state.root && state.focusedPaneId ? findLeaf(state.root, state.focusedPaneId) : null;
-      if (!focused || leafActiveThread(focused) === null) {
-        void navigate({ to: "/", replace: true });
-      }
-    },
-    [navigate, openThread],
-  );
+  const followClose = (survivor: ScopedThreadRef | null) => {
+    if (survivor) {
+      openThread(survivor, true);
+      return;
+    }
+    const state = useChatPanesStore.getState();
+    const focused =
+      state.root && state.focusedPaneId ? findLeaf(state.root, state.focusedPaneId) : null;
+    if (!focused || leafActiveThread(focused) === null) {
+      void navigate({ to: "/", replace: true });
+    }
+  };
 
-  const closePane = useCallback(
-    (paneId: ChatPaneId) => {
-      followClose(useChatPanesStore.getState().closePane(paneId));
-    },
-    [followClose],
-  );
+  const closePane = (paneId: ChatPaneId) => {
+    followClose(useChatPanesStore.getState().closePane(paneId));
+  };
 
-  const closeTabs = useCallback(
-    (threadKeys: readonly string[], keepKey?: string) => {
-      followClose(useChatPanesStore.getState().closeTabs(threadKeys, keepKey));
-    },
-    [followClose],
-  );
+  const closeTabs = (threadKeys: readonly string[], keepKey?: string) => {
+    followClose(useChatPanesStore.getState().closeTabs(threadKeys, keepKey));
+  };
 
-  const activateTab = useCallback(
-    (paneId: ChatPaneId, threadKey: string) => {
-      const store = useChatPanesStore.getState();
-      store.activateTab(paneId, threadKey);
-      const leaf = useChatPanesStore.getState().root
-        ? findLeafByThreadKey(useChatPanesStore.getState().root!, threadKey)
-        : null;
-      openThread(leaf ? leafActiveThread(leaf) : null);
-    },
-    [openThread],
-  );
+  const activateTab = (paneId: ChatPaneId, threadKey: string) => {
+    const store = useChatPanesStore.getState();
+    store.activateTab(paneId, threadKey);
+    const leaf = useChatPanesStore.getState().root
+      ? findLeafByThreadKey(useChatPanesStore.getState().root!, threadKey)
+      : null;
+    openThread(leaf ? leafActiveThread(leaf) : null);
+  };
 
   // Draft tabs follow their draft: promoted ones stop being tracked, ones whose
   // draft was discarded (e.g. after a reload) close instead of staying broken.
@@ -179,58 +153,59 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
     if (untrack.length > 0) useChatPanesStore.getState().untrackDraftTabs(untrack);
   }, [draftTabKeys, draftThreadKeys, leaves, serverThreadRefs]);
 
-  const splitPane = useCallback((paneId: ChatPaneId, edge: "right" | "bottom") => {
+  const splitPane = (paneId: ChatPaneId, edge: "right" | "bottom") => {
     useChatPanesStore
       .getState()
       .split({ targetId: paneId, anchorThreadRef: null, edge, threadRef: null });
-  }, []);
+  };
 
-  const showTabMenu = useCallback(
-    async (leaf: ChatPaneLeaf, threadKey: string, position: { x: number; y: number }) => {
-      const api = readLocalApi();
-      if (!api) return;
-      const index = leaf.tabs.findIndex((tab) => scopedThreadKey(tab) === threadKey);
-      if (index < 0) return;
-      const clicked = (await api.contextMenu.show(
-        [
-          { id: "close", label: "Close" },
-          { id: "close-others", label: "Close others", disabled: leaf.tabs.length < 2 },
-          {
-            id: "close-right",
-            label: "Close tabs to the right",
-            disabled: index >= leaf.tabs.length - 1,
-          },
-          { id: "close-all", label: "Close all", separatorBefore: true },
-        ] satisfies {
-          id: TabMenuAction;
-          label: string;
-          disabled?: boolean;
-          separatorBefore?: boolean;
-        }[],
-        position,
-      )) as TabMenuAction | null;
-      if (!clicked) return;
-      const keyOf = (tab: ScopedThreadRef) => scopedThreadKey(tab);
-      switch (clicked) {
-        case "close":
-          closeTabs([threadKey]);
-          return;
-        case "close-others":
-          closeTabs(
-            leaf.tabs.map(keyOf).filter((key) => key !== threadKey),
-            threadKey,
-          );
-          return;
-        case "close-right":
-          closeTabs(leaf.tabs.slice(index + 1).map(keyOf), threadKey);
-          return;
-        case "close-all":
-          closeTabs(leaf.tabs.map(keyOf));
-          return;
-      }
-    },
-    [closeTabs],
-  );
+  const showTabMenu = async (
+    leaf: ChatPaneLeaf,
+    threadKey: string,
+    position: { x: number; y: number },
+  ) => {
+    const api = readLocalApi();
+    if (!api) return;
+    const index = leaf.tabs.findIndex((tab) => scopedThreadKey(tab) === threadKey);
+    if (index < 0) return;
+    const clicked = (await api.contextMenu.show(
+      [
+        { id: "close", label: "Close" },
+        { id: "close-others", label: "Close others", disabled: leaf.tabs.length < 2 },
+        {
+          id: "close-right",
+          label: "Close tabs to the right",
+          disabled: index >= leaf.tabs.length - 1,
+        },
+        { id: "close-all", label: "Close all", separatorBefore: true },
+      ] satisfies {
+        id: TabMenuAction;
+        label: string;
+        disabled?: boolean;
+        separatorBefore?: boolean;
+      }[],
+      position,
+    )) as TabMenuAction | null;
+    if (!clicked) return;
+    const keyOf = (tab: ScopedThreadRef) => scopedThreadKey(tab);
+    switch (clicked) {
+      case "close":
+        closeTabs([threadKey]);
+        return;
+      case "close-others":
+        closeTabs(
+          leaf.tabs.map(keyOf).filter((key) => key !== threadKey),
+          threadKey,
+        );
+        return;
+      case "close-right":
+        closeTabs(leaf.tabs.slice(index + 1).map(keyOf), threadKey);
+        return;
+      case "close-all":
+        closeTabs(leaf.tabs.map(keyOf));
+        return;
+    }
+  };
 
   // Keyboard. Mod+\ splits right, Mod+Shift+\ splits down, Mod+Alt+W closes the
   // focused pane, Mod+Alt+Arrow moves focus through the panes, Mod+Shift+W
@@ -309,124 +284,125 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
     return () => window.removeEventListener("keydown", handler, true);
   }, [activateTab, closePane, closeTabs, focusPane, leaves, splitPane]);
 
-  const startTabDrag = useCallback(
-    (threadKey: string, sourcePaneId: ChatPaneId, event: ReactPointerEvent<HTMLElement>) => {
-      if (event.button !== 0) return;
-      const startX = event.clientX;
-      const startY = event.clientY;
-      let active = false;
-      let current: TabDragState | null = null;
+  const startTabDrag = (
+    threadKey: string,
+    sourcePaneId: ChatPaneId,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => {
+    if (event.button !== 0) return;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let active = false;
+    let current: TabDragState | null = null;
 
-      const update = (clientX: number, clientY: number) => {
-        const element = document
-          .elementsFromPoint(clientX, clientY)
-          .find((node) => node instanceof HTMLElement && node.dataset.chatPaneId !== undefined) as
-          | HTMLElement
-          | undefined;
-        const targetId = element?.dataset.chatPaneId ?? null;
-        let next: TabDragState = { sourceKey: threadKey, target: null, overlay: null };
-        if (element && targetId) {
-          const rect = element.getBoundingClientRect();
-          const storeRoot = useChatPanesStore.getState().root;
-          const sourceLeaf = storeRoot ? findLeafByThreadKey(storeRoot, threadKey) : null;
-          const sameAsSource = targetId === sourcePaneId;
-          if (clientY - rect.top < PANE_STRIP_HEIGHT && clientY >= rect.top) {
-            // Over the strip: insert between tabs.
-            const tabEls = Array.from(element.querySelectorAll<HTMLElement>("[data-chat-tab-key]"));
-            const rects = tabEls.map((el) => el.getBoundingClientRect());
-            const index = resolveTabDropIndex(
-              rects.map((tabRect) => tabRect.left + tabRect.width / 2),
-              clientX,
-            );
-            const lineX =
-              index < rects.length
-                ? rects[index]!.left
-                : rects.length > 0
-                  ? rects[rects.length - 1]!.right
-                  : rect.left + 4;
-            next = {
-              sourceKey: threadKey,
-              target: { paneId: targetId, placement: { index } },
-              overlay: {
-                rect: {
-                  left: lineX - 1,
-                  top: rect.top + 3,
-                  width: 2,
-                  height: PANE_STRIP_HEIGHT - 6,
-                },
-                kind: "insert",
-                label: null,
+    const update = (clientX: number, clientY: number) => {
+      const element = document
+        .elementsFromPoint(clientX, clientY)
+        .find((node) => node instanceof HTMLElement && node.dataset.chatPaneId !== undefined) as
+        | HTMLElement
+        | undefined;
+      const targetId = element?.dataset.chatPaneId ?? null;
+      let next: TabDragState = { sourceKey: threadKey, target: null, overlay: null };
+      if (element && targetId) {
+        const rect = element.getBoundingClientRect();
+        const storeRoot = useChatPanesStore.getState().root;
+        const sourceLeaf = storeRoot ? findLeafByThreadKey(storeRoot, threadKey) : null;
+        const sameAsSource = targetId === sourcePaneId;
+        if (clientY - rect.top < PANE_STRIP_HEIGHT && clientY >= rect.top) {
+          // Over the strip: insert between tabs.
+          const tabEls = Array.from(element.querySelectorAll<HTMLElement>("[data-chat-tab-key]"));
+          const rects = tabEls.map((el) => el.getBoundingClientRect());
+          const index = resolveTabDropIndex(
+            rects.map((tabRect) => tabRect.left + tabRect.width / 2),
+            clientX,
+          );
+          const lineX =
+            index < rects.length
+              ? rects[index]!.left
+              : rects.length > 0
+                ? rects[rects.length - 1]!.right
+                : rect.left + 4;
+          next = {
+            sourceKey: threadKey,
+            target: { paneId: targetId, placement: { index } },
+            overlay: {
+              rect: {
+                left: lineX - 1,
+                top: rect.top + 3,
+                width: 2,
+                height: PANE_STRIP_HEIGHT - 6,
               },
-            };
-          } else {
-            const zone = resolvePaneDropZone(rect, clientX, clientY, PANE_STRIP_HEIGHT);
-            if (zone === "center") {
-              if (!sameAsSource) {
-                next = {
-                  sourceKey: threadKey,
-                  target: { paneId: targetId, placement: { body: true } },
-                  overlay: {
-                    rect: dropPreviewRect(rect, zone),
-                    kind: "zone",
-                    label: "Move tab here",
-                  },
-                };
-              }
-            } else if (zone && !(sameAsSource && sourceLeaf?.tabs.length === 1)) {
+              kind: "insert",
+              label: null,
+            },
+          };
+        } else {
+          const zone = resolvePaneDropZone(rect, clientX, clientY, PANE_STRIP_HEIGHT);
+          if (zone === "center") {
+            if (!sameAsSource) {
               next = {
                 sourceKey: threadKey,
-                target: { paneId: targetId, placement: { edge: zone } },
-                overlay: { rect: dropPreviewRect(rect, zone), kind: "zone", label: "New split" },
+                target: { paneId: targetId, placement: { body: true } },
+                overlay: {
+                  rect: dropPreviewRect(rect, zone),
+                  kind: "zone",
+                  label: "Move tab here",
+                },
               };
             }
+          } else if (zone && !(sameAsSource && sourceLeaf?.tabs.length === 1)) {
+            next = {
+              sourceKey: threadKey,
+              target: { paneId: targetId, placement: { edge: zone } },
+              overlay: { rect: dropPreviewRect(rect, zone), kind: "zone", label: "New split" },
+            };
           }
         }
-        current = next;
-        setDrag(next);
-      };
+      }
+      current = next;
+      setDrag(next);
+    };
 
-      const onMove = (moveEvent: PointerEvent) => {
-        if (!active) {
-          if (
-            Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD_PX
-          ) {
-            return;
-          }
-          active = true;
-          document.body.classList.add("chat-pane-dragging");
+    const onMove = (moveEvent: PointerEvent) => {
+      if (!active) {
+        if (
+          Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < DRAG_THRESHOLD_PX
+        ) {
+          return;
         }
-        update(moveEvent.clientX, moveEvent.clientY);
-      };
-      const finish = (commit: boolean) => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("keydown", onKey, true);
-        document.body.classList.remove("chat-pane-dragging");
-        const target = current?.target ?? null;
-        current = null;
-        setDrag(null);
-        if (!commit || !active || !target) return;
-        const placement =
-          "body" in target.placement
-            ? {}
-            : "edge" in target.placement
-              ? { edge: target.placement.edge }
-              : { index: target.placement.index };
-        openThread(useChatPanesStore.getState().dropTab(threadKey, target.paneId, placement));
-      };
-      const onUp = () => finish(true);
-      const onKey = (keyEvent: KeyboardEvent) => {
-        if (keyEvent.key !== "Escape") return;
-        keyEvent.preventDefault();
-        keyEvent.stopPropagation();
-        finish(false);
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("keydown", onKey, true);
-    },
-    [openThread],
-  );
+        active = true;
+        document.body.classList.add("chat-pane-dragging");
+      }
+      update(moveEvent.clientX, moveEvent.clientY);
+    };
+    const finish = (commit: boolean) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("keydown", onKey, true);
+      document.body.classList.remove("chat-pane-dragging");
+      const target = current?.target ?? null;
+      current = null;
+      setDrag(null);
+      if (!commit || !active || !target) return;
+      const placement =
+        "body" in target.placement
+          ? {}
+          : "edge" in target.placement
+            ? { edge: target.placement.edge }
+            : { index: target.placement.index };
+      openThread(useChatPanesStore.getState().dropTab(threadKey, target.paneId, placement));
+    };
+    const onUp = () => finish(true);
+    const onKey = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key !== "Escape") return;
+      keyEvent.preventDefault();
+      keyEvent.stopPropagation();
+      finish(false);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("keydown", onKey, true);
+  };
 
   const context: PaneTreeContext = {
     focusedPaneId,
@@ -747,7 +723,11 @@ function PaneStrip({
   useEffect(() => {
     const active = tabsRef.current?.querySelector<HTMLElement>("[data-chat-tab-active='true']");
     active?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [leaf.activeKey, leaf.tabs.length]);
+  }, [
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A new active tab or tab count scrolls the active tab back into view.
+    leaf.activeKey,
+    leaf.tabs.length,
+  ]);
 
   return (
     <div
@@ -945,23 +925,21 @@ function EmptyPanePicker({
 }) {
   const threads = useThreadShells();
   const root = useChatPanesStore((state) => state.root);
-  const recent = useMemo(() => {
-    const open = new Set(
-      (root ? collectLeaves(root) : []).flatMap((leaf) =>
-        leaf.tabs.map((ref) => scopedThreadKey(ref)),
-      ),
-    );
-    return threads
-      .filter(
-        (thread) =>
-          thread.deletedAt == null &&
-          thread.archivedAt == null &&
-          thread.lineage.relationshipToParent !== "subagent" &&
-          !open.has(scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id })),
-      )
-      .toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
-      .slice(0, EMPTY_PANE_RECENT_LIMIT);
-  }, [root, threads]);
+  const open = new Set(
+    (root ? collectLeaves(root) : []).flatMap((leaf) =>
+      leaf.tabs.map((ref) => scopedThreadKey(ref)),
+    ),
+  );
+  const recent = threads
+    .filter(
+      (thread) =>
+        thread.deletedAt == null &&
+        thread.archivedAt == null &&
+        thread.lineage.relationshipToParent !== "subagent" &&
+        !open.has(scopedThreadKey({ environmentId: thread.environmentId, threadId: thread.id })),
+    )
+    .toSorted((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+    .slice(0, EMPTY_PANE_RECENT_LIMIT);
 
   return (
     <div className="scrollbar-gutter-both flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-6 py-10">
