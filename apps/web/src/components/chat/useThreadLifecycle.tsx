@@ -39,6 +39,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-execution";
 import { useAcknowledgeThreadWoke, useThreadActions } from "../../hooks/useThreadActions";
 import { settleAndAdvance } from "../../settleAndAdvance";
+import { useChatPanesStore } from "../../fork/chatPanesStore";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { resolveThreadLastVisitedAt } from "../Sidebar.logic";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -525,6 +526,11 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     }
     const routeRef = resolveThreadOpenRoute(threadRef, shell);
     if (scopedThreadKey(routeRef) === routeThreadKey) return;
+    const isSubagentParent =
+      activeThread?.lineage.relationshipToParent === "subagent" &&
+      activeThread.lineage.parentThreadId === threadId;
+    if (isSubagentParent && activeThreadRef)
+      useChatPanesStore.getState().returnToParent(activeThreadRef, threadRef); // fork
     void navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(routeRef),

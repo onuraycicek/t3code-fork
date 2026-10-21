@@ -18,6 +18,7 @@ import {
   moveTabToEdge,
   moveTabToPane,
   removePane,
+  returnToParentTab,
   setPaneRatio,
   splitPane,
   touchHistory,
@@ -154,6 +155,12 @@ interface ChatPanesState {
   ) => ScopedThreadRef | null;
   /** Records a visit (a finished Ctrl+Tab walk). */
   touch: (threadKey: string) => void;
+  /**
+   * The subagent `childRef` hands its tab back to its parent: the child tab
+   * closes and the parent's tab shows and takes focus. The route follows the
+   * parent on its own.
+   */
+  returnToParent: (childRef: ScopedThreadRef, parentRef: ScopedThreadRef) => void;
   /**
    * Closes a pane with all its tabs. Returns the thread the route should follow
    * (the newly focused pane's), or null when the route does not need to change.
@@ -326,6 +333,21 @@ export const useChatPanesStore = create<ChatPanesState>()(
         });
         return leaf.tabs.find((tab) => scopedThreadKey(tab) === threadKey) ?? null;
       },
+      returnToParent: (childRef, parentRef) =>
+        set((state) => {
+          if (!state.root) return state;
+          const childKey = scopedThreadKey(childRef);
+          const parentKey = scopedThreadKey(parentRef);
+          const root = returnToParentTab(state.root, childKey, parentRef, state.history);
+          if (root === state.root) return state;
+          const leaf = findLeafByThreadKey(root, parentKey);
+          const history = state.history.filter((entry) => entry !== childKey);
+          return {
+            root,
+            focusedPaneId: leaf?.id ?? pickFocusedLeaf(root, state.focusedPaneId).id,
+            history: visit(history, parentKey),
+          };
+        }),
       touch: (threadKey) =>
         set((state) => {
           const history = touchHistory(state.history, threadKey);
