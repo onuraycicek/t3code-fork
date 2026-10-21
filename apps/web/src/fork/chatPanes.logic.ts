@@ -354,6 +354,30 @@ export function closeTab(
   return next;
 }
 
+/**
+ * Leaves a subagent's tab for its parent: the child tab closes and the parent
+ * shows. An open parent tab is activated wherever it is; otherwise the parent
+ * takes the child's slot, so the pane keeps its place in the layout.
+ */
+export function returnToParentTab(
+  root: ChatPaneNode,
+  childKey: string,
+  parentRef: ScopedThreadRef,
+  history: readonly string[],
+): ChatPaneNode {
+  const child = findLeafByThreadKey(root, childKey);
+  if (!child) return root;
+  const parentKey = scopedThreadKey(parentRef);
+  const parentLeaf = findLeafByThreadKey(root, parentKey);
+  if (parentLeaf) {
+    const next = closeTab(root, childKey, history);
+    const leaf = findLeafByThreadKey(next, parentKey);
+    return leaf ? activateTab(next, leaf.id, parentKey) : next;
+  }
+  const tabs = child.tabs.map((tab) => (scopedThreadKey(tab) === childKey ? parentRef : tab));
+  return replaceLeaf(root, { ...child, tabs, activeKey: parentKey });
+}
+
 /** Index in the pane's strip where a drop at `clientX` inserts, given tab midpoints. */
 export function resolveTabDropIndex(midpoints: readonly number[], clientX: number): number {
   const index = midpoints.findIndex((mid) => clientX < mid);
