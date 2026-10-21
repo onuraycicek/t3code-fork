@@ -4,7 +4,7 @@
 NODE_BIN := $(HOME)/.nvm/versions/node/v24.22.0/bin
 export PATH := $(NODE_BIN):$(PATH)
 export COREPACK_ENABLE_DOWNLOAD_PROMPT := 0
-PNPM := corepack pnpm@11.10.0
+PNPM := corepack pnpm@12.14.0
 
 # Separate data home so the fork never touches the official ~/.t3 state.
 FORK_HOME ?= $(HOME)/.t3-fork
