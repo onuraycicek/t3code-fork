@@ -46,11 +46,15 @@ files only carry small hook-up edits:
 - `ChatView.tsx`: `useChatPane()` + one-line `inputOwner` guards on window
   listeners, so background panes do not steal input; one line in
   `onOpenRelatedThread` hands a subagent's tab back to its parent.
+  `chat/useTimelineFollow.ts` carries the same guard on its timeline scroll keys.
 - `DiffPanel.tsx`: reads the pane's thread from `useChatPane()`.
 - `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`.
 - `Sidebar.tsx`, `Sidebar.logic.ts`, `Sidebar.drag.ts`: call sites into
   `fork/useSidebarProjectGrouping`, `fork/sidebarProjectItems`,
-  `fork/SidebarProjectGroupRows`; the compact grouped row variant.
+  `fork/SidebarProjectGroupRows`. `sidebar/SidebarThreadRow.tsx`: the
+  `hideProjectLabel` prop branching to `fork/SidebarCompactThreadRow`.
+- `chat/TimelineAssistantRows.tsx`: renders `<ResponseHandoffActions>` in the
+  assistant message meta.
 - `SettingsPanels.tsx`: renders `<ForkSettingsRows />` (setting stored in
   `fork/forkPrefsStore.ts`, not in the upstream settings schema).
 - `threadActionMenu.logic.ts`, `contextMenuFallback.ts`: "Open in split" item.
