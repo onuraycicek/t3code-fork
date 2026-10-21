@@ -181,6 +181,7 @@ import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { useChatPane } from "../fork/chatPaneContext";
+import { useChatPanesStore } from "../fork/chatPanesStore";
 import { settleAndAdvance } from "../settleAndAdvance";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -3856,6 +3857,8 @@ export default function ChatView(props: ChatViewProps) {
       toastManager.add({ type: "info", title: "This thread is no longer available" });
       return;
     }
+    if (threadId === parentSubagentThreadId && activeThreadRef)
+      useChatPanesStore.getState().returnToParent(activeThreadRef, threadRef); // fork
     void navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(threadRef),
