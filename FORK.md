@@ -25,7 +25,9 @@ Two features on top of upstream T3 Code:
   pane edge to split. `Cmd+Shift+W` closes the tab, `Ctrl+Tab` / `Ctrl+Shift+Tab`
   move to the next / previous tab of the focused pane (never another pane),
   `Ctrl+1..9` (`Alt+1..9` off macOS) jumps to tab N. Layout persisted v2 (v1
-  single-thread panes migrate to one tab).
+  single-thread panes migrate to one tab). "Open parent thread" from a subagent
+  closes the subagent's tab: the parent's open tab shows, or the parent takes the
+  subagent tab's slot.
 
 - **Queue waits for the agent to finish.** A queued message is held while the
   agent waits on work that reports back (a subagent or another background
@@ -42,7 +44,8 @@ All fork code is in `apps/web/src/fork/`, `apps/desktop/src/fork/` and
 files only carry small hook-up edits:
 
 - `ChatView.tsx`: `useChatPane()` + one-line `inputOwner` guards on window
-  listeners, so background panes do not steal input.
+  listeners, so background panes do not steal input; one line in
+  `onOpenRelatedThread` hands a subagent's tab back to its parent.
 - `DiffPanel.tsx`: reads the pane's thread from `useChatPane()`.
 - `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`.
 - `Sidebar.tsx`, `Sidebar.logic.ts`, `Sidebar.drag.ts`: call sites into
