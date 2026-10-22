@@ -44,9 +44,12 @@ All fork code is in `apps/web/src/fork/`, `apps/desktop/src/fork/` and
 files only carry small hook-up edits:
 
 - `ChatView.tsx`: `useChatPane()` + one-line `inputOwner` guards on window
-  listeners, so background panes do not steal input; one line in
-  `onOpenRelatedThread` hands a subagent's tab back to its parent.
-  `chat/useTimelineFollow.ts` carries the same guard on its timeline scroll keys.
+  listeners, so background panes do not steal input (paste-to-focus gets a null
+  thread when not the owner). `chat/useRightPanelActions.ts` takes the same
+  `inputOwner` for its preview-action subscription, and
+  `chat/useTimelineFollow.ts` guards its timeline scroll keys.
+  `chat/useThreadLifecycle.tsx`: one line in `onOpenRelatedThread` hands a
+  subagent's tab back to its parent.
 - `DiffPanel.tsx`: reads the pane's thread from `useChatPane()`.
 - `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`.
 - `Sidebar.tsx`, `Sidebar.logic.ts`, `Sidebar.drag.ts`: call sites into
