@@ -37,6 +37,14 @@ Two features on top of upstream T3 Code:
   still sends at once. Server code: `apps/server/src/fork/queueHold.ts` (rule),
   `queueHoldSweep.ts` (30 s re-check when work ends without a wake).
 
+- **Move a terminal to another chat.** "Move Terminal to Chat…" (terminal
+  toolbar button, or right-click in the terminal) opens a chat picker; the live
+  session is re-filed under the chosen chat without restarting the process, its
+  history moves with it, and that chat opens with the terminal shown. The
+  terminal keeps its id unless the target already has one by that name. Server:
+  `apps/server/src/fork/terminalMove.ts` (`terminal.move` RPC); web:
+  `fork/MoveTerminalDialog.tsx`, `fork/terminalMoveStore.ts`.
+
 ## Where the code lives (keep it this way: fewer rebase conflicts)
 
 All fork code is in `apps/web/src/fork/`, `apps/desktop/src/fork/` and
@@ -65,6 +73,15 @@ files only carry small hook-up edits:
 - Server: `Orchestrator.ts` (`forkQueueHold` in `startNextQueuedRun`),
   `QueuedRunOrder.ts` (`forkWakeFirst`), `server.ts` (sweep layer),
   `runtimeLayer.test.ts` (one wake dispatched later).
+- Terminal move: `contracts/src/fork/terminalMove.ts` exported from
+  `contracts/src/index.ts`; `contracts/src/rpc.ts` (method name, Rpc, group
+  entry), `server/src/ws.ts`, `auth/RpcAuthorization.ts`,
+  `observability/RpcInstrumentation.ts` (one line each),
+  `terminal/Manager.ts` (`move` on the service, wired to the fork module),
+  `terminal/Manager.test.ts` (one move test),
+  `client-runtime/src/state/terminal.ts` (`move` command),
+  `ThreadTerminalDrawer.tsx` (toolbar buttons and context menu item),
+  `fork/ChatPanes.tsx` mounts the picker.
 
 New fork code goes in `fork/`; touch an upstream file only with a one-line hook.
 
