@@ -2993,6 +2993,7 @@ export const layerWsRpc = (
           terminalManager.resize(input, terminalViewerId(metadata)),
         [WS_METHODS.terminalClear]: (input) => terminalManager.clear(input),
         [WS_METHODS.terminalClose]: (input) => terminalManager.close(input),
+        [WS_METHODS.terminalMove]: (input) => terminalManager.move(input), // fork
         [WS_METHODS.terminalObserve]: (input) =>
           terminalOutputStream(
             (listener, registerCleanup) =>

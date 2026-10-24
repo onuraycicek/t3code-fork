@@ -116,6 +116,13 @@ export function createTerminalEnvironmentAtoms<R, E>(
       scheduler: lifecycleScheduler,
       concurrency: lifecycleConcurrency,
     }),
+    // fork: hands a live session to another thread.
+    move: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:terminal:move",
+      tag: WS_METHODS.terminalMove,
+      scheduler: lifecycleScheduler,
+      concurrency: lifecycleConcurrency,
+    }),
   };
   return {
     ...atoms,
