@@ -622,6 +622,63 @@ it.layer(
     }),
   );
 
+  // fork: terminal.move
+  it.effect("moves a live terminal to another thread without restarting it", () =>
+    Effect.gen(function* () {
+      const { manager, ptyAdapter, logsDir, getEvents } = yield* createManager();
+      yield* manager.open(openInput());
+      yield* manager.open(openInput({ threadId: "thread-2" }));
+      const process = ptyAdapter.processes[0]!;
+      process.emitData("before\n");
+
+      const moved = yield* manager.move({
+        threadId: "thread-1",
+        terminalId: DEFAULT_TERMINAL_ID,
+        targetThreadId: "thread-2",
+      });
+      // thread-2 already has the default id, so the moved terminal gets the next free one.
+      expect(moved).toEqual({ threadId: "thread-2", terminalId: "term-2" });
+      expect(process.killed).toBe(false);
+      expect(ptyAdapter.spawnInputs).toHaveLength(2);
+
+      yield* manager.write({ threadId: "thread-2", terminalId: "term-2", data: "pwd\n" });
+      expect(process.writes).toEqual(["pwd\n"]);
+      const stale = yield* Effect.flip(
+        manager.write({ threadId: "thread-1", terminalId: DEFAULT_TERMINAL_ID, data: "x" }),
+      );
+      expect(stale._tag).toBe("TerminalSessionLookupError");
+
+      process.emitData("after\n");
+      const events = yield* getEvents;
+      expect(
+        events.some(
+          (event) =>
+            event.type === "closed" &&
+            event.threadId === "thread-1" &&
+            event.terminalId === DEFAULT_TERMINAL_ID,
+        ),
+      ).toBe(true);
+      expect(
+        events.some(
+          (event) =>
+            event.type === "output" &&
+            event.threadId === "thread-2" &&
+            event.terminalId === "term-2" &&
+            event.data === "after\n",
+        ),
+      ).toBe(true);
+
+      yield* manager.close({ threadId: "thread-2", terminalId: "term-2" });
+      const fs = yield* FileSystem.FileSystem;
+      expect(yield* fs.exists(yield* historyLogPath(logsDir))).toBe(false);
+      const reopened = yield* manager.open(
+        openInput({ threadId: "thread-2", terminalId: "term-2" }),
+      );
+      expect(reopened.history).toContain("before");
+      expect(reopened.history).toContain("after");
+    }),
+  );
+
   it.effect("closes only a thread's idle shells, ignoring a helper forked from the shell", () =>
     Effect.gen(function* () {
       const { manager, ptyAdapter } = yield* createManager(5, {
