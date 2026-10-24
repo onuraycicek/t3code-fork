@@ -268,6 +268,7 @@ import {
   TerminalSessionSnapshot,
   TerminalWriteInput,
 } from "./terminal.ts";
+import { TerminalMoveInput, TerminalMoveResult } from "./fork/terminalMove.ts";
 import {
   DiscoveredLocalServerList,
   ConfiguredLocalServerUrls,
@@ -473,6 +474,7 @@ export const WS_METHODS = {
   terminalResize: "terminal.resize",
   terminalClear: "terminal.clear",
   terminalClose: "terminal.close",
+  terminalMove: "terminal.move", // fork
 
   previewOpen: "preview.open",
   previewResize: "preview.resize",
@@ -1581,6 +1583,13 @@ const WsTerminalCloseRpc = Rpc.make(WS_METHODS.terminalClose, {
   error: Schema.Union([TerminalError, EnvironmentAuthorizationError]),
 });
 
+// fork
+const WsTerminalMoveRpc = Rpc.make(WS_METHODS.terminalMove, {
+  payload: TerminalMoveInput,
+  success: TerminalMoveResult,
+  error: Schema.Union([TerminalError, EnvironmentAuthorizationError]),
+});
+
 const WsPreviewOpenRpc = Rpc.make(WS_METHODS.previewOpen, {
   payload: PreviewOpenInput,
   success: PreviewSessionSnapshot,
@@ -2142,6 +2151,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsTerminalResizeRpc,
   WsTerminalClearRpc,
   WsTerminalCloseRpc,
+  WsTerminalMoveRpc, // fork
   WsSubscribeTerminalMetadataRpc,
   WsPreviewOpenRpc,
   WsPreviewResizeRpc,
