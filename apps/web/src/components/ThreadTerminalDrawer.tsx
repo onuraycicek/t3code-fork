@@ -11,6 +11,7 @@ import {
   type TerminalSessionState,
 } from "@t3tools/client-runtime/state/terminal";
 import {
+  ArrowRightLeft,
   Plus,
   Square,
   SquareSplitHorizontal,
@@ -77,6 +78,7 @@ import {
 } from "../types";
 import { readLocalApi } from "~/localApi";
 import { confirmTerminalClose } from "~/lib/terminalCloseConfirm";
+import { requestTerminalMove } from "../fork/terminalMoveStore";
 import { useClientSettings } from "../hooks/useSettings";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useAttachedTerminalSession } from "../state/terminalSessions";
@@ -355,7 +357,8 @@ export type TerminalContextMenuAction =
   | "copy"
   | "paste"
   | "select-all"
-  | "scroll-to-bottom";
+  | "scroll-to-bottom"
+  | "move-to-chat"; // fork
 
 function terminalSelectionMenuItems(options?: {
   canAddToChat?: boolean;
@@ -382,6 +385,7 @@ function terminalContextMenuItems(options: {
     { id: "paste", label: "Paste", ...(options.readOnly ? { disabled: true } : {}) },
     { id: "select-all", label: "Select all" },
     { id: "scroll-to-bottom", label: "Jump to latest" },
+    { id: "move-to-chat", label: "Move to chat…", ...(options.readOnly ? { disabled: true } : {}) }, // fork
   ];
 }
 
@@ -505,6 +509,9 @@ function TerminalSessionViewport({
   });
   const canAddSelectionToChat = useEffectEvent(() => onAddTerminalContext !== undefined);
   const readTerminalLabel = useEffectEvent(() => terminalLabel);
+  const requestMoveToChat = useEffectEvent(() =>
+    requestTerminalMove({ threadRef, terminalId, label: terminalLabel }),
+  ); // fork
   const terminalFontFamily = useClientSettings((settings) =>
     resolveTerminalFontPreference({
       advanced: advancedTypography,
@@ -825,6 +832,9 @@ function TerminalSessionViewport({
           case "scroll-to-bottom":
             terminalRef.current?.scrollToBottom();
             focusIfCurrent(requestId);
+            return;
+          case "move-to-chat": // fork
+            requestMoveToChat();
             return;
         }
       };
@@ -1620,6 +1630,12 @@ export default function ThreadTerminalDrawer({
     if (!canOperateTerminal) return;
     onNewTerminal();
   };
+  const moveTerminalToChat = (terminalId: string) => {
+    if (!canOperateTerminal) return;
+    const label = terminalLabelById.get(terminalId) ?? getTerminalLabel(terminalId);
+    requestTerminalMove({ threadRef, terminalId, label }); // fork
+  };
+
   const confirmCloseTerminal = (terminalId: string) => {
     if (!canOperateTerminal) return;
     const label = terminalLabelById.get(terminalId) ?? getTerminalLabel(terminalId);
@@ -1849,6 +1865,16 @@ export default function ThreadTerminalDrawer({
               <Plus className="size-3.25" />
             </TerminalActionButton>
             <div className="h-4 w-px bg-border/80" />
+            {/* fork */}
+            <TerminalActionButton
+              disabled={!canOperateTerminal}
+              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              onClick={() => moveTerminalToChat(resolvedActiveTerminalId)}
+              label="Move Terminal to Chat…"
+            >
+              <ArrowRightLeft className="size-3.25" />
+            </TerminalActionButton>
+            <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
               disabled={!canOperateTerminal}
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
@@ -1924,6 +1950,15 @@ export default function ThreadTerminalDrawer({
                     label={newTerminalActionLabel}
                   >
                     <Plus className="size-3.25" />
+                  </TerminalActionButton>
+                  {/* fork */}
+                  <TerminalActionButton
+                    disabled={!canOperateTerminal}
+                    className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
+                    onClick={() => moveTerminalToChat(resolvedActiveTerminalId)}
+                    label="Move Terminal to Chat…"
+                  >
+                    <ArrowRightLeft className="size-3.25" />
                   </TerminalActionButton>
                   <TerminalActionButton
                     disabled={!canOperateTerminal}
