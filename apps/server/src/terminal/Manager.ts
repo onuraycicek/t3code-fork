@@ -2,6 +2,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
+import { forkMakeTerminalMove } from "../fork/terminalMove.ts";
 import {
   DEFAULT_TERMINAL_ID,
   DEFAULT_MAX_TERMINAL_BUFFER_BYTES,
@@ -21,6 +22,8 @@ import {
   type TerminalAttachStreamEvent,
   type TerminalClearInput,
   type TerminalCloseInput,
+  type TerminalMoveInput,
+  type TerminalMoveResult,
   type TerminalEvent,
   type TerminalMetadataStreamEvent,
   type TerminalOpenInput,
@@ -200,6 +203,9 @@ export class TerminalManager extends Context.Service<
      * When `terminalId` is omitted, closes all sessions for the thread.
      */
     readonly close: (input: TerminalCloseInput) => Effect.Effect<void, TerminalError>;
+
+    /** Fork: hands a live session to another thread (see fork/terminalMove.ts). */
+    readonly move: (input: TerminalMoveInput) => Effect.Effect<TerminalMoveResult, TerminalError>;
 
     readonly closeIdle: (input: {
       readonly threadId: string;
@@ -3371,7 +3377,25 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       ),
     );
 
+  // fork
+  const move = forkMakeTerminalMove({
+    withThreadLock,
+    readSessions: Effect.map(readManagerState, (state) => state.sessions),
+    modifyManagerState,
+    toSessionKey,
+    closedSessionKeys,
+    historyOf: (session) => session.history,
+    flushPersist,
+    persistHistory,
+    deleteHistory,
+    unregisterTerminal,
+    publishEvent,
+    snapshot,
+    advanceEventSequence,
+  });
+
   return TerminalManager.of({
+    move, // fork
     open,
     attachStream,
     observeStream,
