@@ -1418,7 +1418,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         isActive={props.isActive}
         isUnread={isUnread}
         isWoke={isWoke}
-        needsInput={status === "input"}
+        needsInput={status === "input" || status === "request"}
         receded={shouldRecede}
         statusIcon={topStatus?.icon === "done" || topStatus?.icon == null ? null : topStatus.icon}
         statusClassName={topStatus?.className}

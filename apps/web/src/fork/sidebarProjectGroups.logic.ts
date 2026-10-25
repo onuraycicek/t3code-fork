@@ -15,11 +15,9 @@ export type SidebarProjectThreadGroup<TThread> = {
 };
 
 /**
- * Split the active section into per-project groups. Threads keep their given
- * order inside a group; groups follow `projectOrder`, then any project the
- * order does not know. A collapsed project shows no rows and an expanded one
- * shows the first page, unless `showAllProjectKeys` lists it. The open thread
- * always stays visible, appended after the page when it falls beyond it.
+ * Groups follow `projectOrder`, then unknown projects. Expanded groups show the
+ * first page unless listed in `showAllProjectKeys`. The open thread always stays
+ * visible, appended after the page when it falls beyond it.
  */
 export function buildSidebarProjectThreadGroups<TThread>(input: {
   readonly threads: readonly TThread[];
