@@ -22,11 +22,9 @@ import { useTerminalMoveStore, type TerminalMoveRequest } from "./terminalMoveSt
 const RESULT_LIMIT = 50;
 
 /**
- * Fork: "Move to chat" picker. Lists the other chats of the terminal's
- * environment, newest first. Picking one hands the live session to that chat
- * (the process keeps running), then opens the chat with the terminal shown.
- * Mounted once per window by ChatPanes; terminals open it through
- * `requestTerminalMove`.
+ * Fork: "Move to chat" picker. Hands the live session to the picked chat (the
+ * process keeps running). Mounted once per window by ChatPanes; terminals open
+ * it through `requestTerminalMove`.
  */
 export function MoveTerminalDialog() {
   const request = useTerminalMoveStore((state) => state.request);

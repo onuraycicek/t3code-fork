@@ -53,11 +53,8 @@ export interface ForkTerminalMoveDeps<
 
 /**
  * Fork: re-files a session under another thread without touching its process.
- * The session object stays the same, so output, exit and activity keep flowing
- * and are published under the new ids from here on. The source thread sees the
- * terminal close and the target thread sees it start (the metadata stream turns
- * these into remove/upsert), and the history file moves with it. The terminal
- * keeps its id unless the target already has one by that name.
+ * The source sees the terminal close and the target sees it start; the history
+ * file moves too. The id is kept unless the target already uses it.
  */
 export function forkMakeTerminalMove<
   S extends MovableSession,

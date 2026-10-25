@@ -2,16 +2,9 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 /**
- * Pure helpers for the split chat layout: a binary tree of splits whose leaves
- * are tab groups. Each leaf holds server-thread tabs (one thread is open in at
- * most one tab of the window) and shows its active tab, or nothing yet (an empty
- * pane waiting for a thread). Modeled on Orca's tab-group layout tree:
- * `horizontal` puts the two children side by side, `vertical` stacks them, and
- * `ratio` is the share of the axis given to `first`.
- *
- * Recency is a window-wide list of thread keys (most recent first), kept next to
- * the tree; it picks the tab that takes over when one closes and feeds the
- * Ctrl+Tab switcher.
+ * Split layout: a binary tree whose leaves are tab groups; a thread is open in at
+ * most one tab per window. `ratio` is the axis share given to `first`. Recency
+ * (most recent first) picks the tab that takes over when one closes.
  */
 
 export type ChatPaneId = string;

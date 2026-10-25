@@ -5,11 +5,9 @@ import { useState } from "react";
 import { useComposerDraftStore, type DraftId, type DraftSessionState } from "../composerDraftStore";
 
 /**
- * Draft tabs. A draft is a tab of the pane layout like any thread: the tab holds
- * the thread ref the draft session reserved. Before the first send no server
- * thread exists for that ref and the pane renders the draft view; after the
- * send the very same ref becomes a server thread, so the tab is promoted in
- * place without any layout change.
+ * A draft tab holds the thread ref its draft session reserved. After the first
+ * send that same ref becomes a server thread, so the tab is promoted in place
+ * without any layout change.
  */
 
 /** The draft route a tab should navigate to, or null for a server thread tab. */

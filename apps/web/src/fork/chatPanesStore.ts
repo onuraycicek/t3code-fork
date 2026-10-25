@@ -30,12 +30,9 @@ import { resolveStorage } from "../lib/storage";
 import { randomUUID } from "../lib/utils";
 
 /**
- * The window's chat layout: a tree of panes, each a tab group. Null means no
- * thread has been opened yet (the plain upstream view). The route stays the
- * source of truth for the focused pane's active tab: opening a thread from
- * anywhere either focuses the tab that already shows it or adds it as a new
- * tab of the focused pane. A layout of a single pane is kept (tabs without
- * splits).
+ * Window chat layout: a tree of tab-group panes; null is the plain upstream view.
+ * The route is the source of truth for the focused pane's active tab. A
+ * single-pane layout is kept (tabs without splits).
  */
 
 /** Pane id used for the pane created when the first thread opens. */
