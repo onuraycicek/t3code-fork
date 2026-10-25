@@ -6,6 +6,7 @@ import {
   CircleDotDashedIcon,
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
+  UserRoundIcon,
   XIcon,
 } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
@@ -17,6 +18,7 @@ export type CompactRowStatusIcon =
   | "working"
   | "waiting"
   | "input"
+  | "request"
   | "approval"
   | "failed"
   | "done"
@@ -80,6 +82,8 @@ export function SidebarCompactThreadRow(props: {
                 <CircleDotDashedIcon aria-hidden className={iconClass} />
               ) : icon === "input" ? (
                 <MessageCircleQuestionIcon aria-hidden className={iconClass} />
+              ) : icon === "request" ? (
+                <UserRoundIcon aria-hidden className={iconClass} />
               ) : icon === "approval" ? (
                 <ShieldQuestionIcon aria-hidden className={iconClass} />
               ) : icon === "failed" ? (

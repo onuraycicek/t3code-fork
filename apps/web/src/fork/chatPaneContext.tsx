@@ -34,11 +34,9 @@ export function useChatPane(): ChatPaneContextValue | null {
 }
 
 /**
- * Gives each pane its own composer handle. Upstream shares one app-wide handle
- * (so the command palette reaches "the" composer); with several chats on screen
- * that made a file dropped on a background pane land in the focused pane's
- * composer. The focused pane keeps the shared handle, so the palette still
- * targets it; background panes get a private one.
+ * Upstream shares one app-wide composer handle, so a file dropped on a
+ * background pane landed in the focused pane. The focused pane keeps the shared
+ * handle (the palette still targets it); background panes get a private one.
  */
 export function PaneComposerScope({
   focused,
