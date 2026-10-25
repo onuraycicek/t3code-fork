@@ -63,11 +63,8 @@ interface TabDragState {
 type TabMenuAction = "close" | "close-others" | "close-right" | "close-all";
 
 /**
- * Orca-style tabbed split layout for chats: a recursive tree of flex splits;
- * every pane is a tab group with a strip (tabs, split and close pane),
- * resize handles that clamp to 15–85%, and tab drags that reorder, move to
- * another pane, or split on a target's outer 20%. Only each pane's active tab
- * mounts a chat. The focused pane owns input and mirrors the route.
+ * Orca-style tabbed split layout. Only each pane's active tab mounts a chat; the
+ * focused pane owns input and mirrors the route.
  */
 export function ChatPanes({ root }: { root: ChatPaneNode }) {
   const navigate = useNavigate();
@@ -208,11 +205,8 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
     }
   };
 
-  // Keyboard. Mod+\ splits right, Mod+Shift+\ splits down, Mod+Alt+W closes the
-  // focused pane, Mod+Alt+Arrow moves focus through the panes, Mod+Shift+W
-  // closes the active tab, Ctrl+1..9 (Alt+1..9 off macOS, where Ctrl+digit is
-  // taken) jumps to a tab of the focused pane, Ctrl+Tab / Ctrl+Shift+Tab move to
-  // the next / previous tab of the focused pane (wrapping; never another pane).
+  // Pane and tab shortcuts (see FORK.md). Tab jumps use Alt+1..9 off macOS,
+  // where Ctrl+digit is taken; Ctrl+Tab never leaves the focused pane.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || isCommandPaletteOpen()) return;
