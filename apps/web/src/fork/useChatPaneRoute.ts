@@ -38,11 +38,13 @@ export function useChatPaneRoute(
   const routeThreadKey = routeRef ? scopedThreadKey(routeRef) : null;
   const latestTargetRef = useRef(target);
   const latestRouteRef = useRef(routeRef);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Keeps the latest route in refs for the route-change effect below.
   useEffect(() => {
     latestTargetRef.current = target;
     latestRouteRef.current = routeRef;
   });
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Syncs the route thread into the external pane store.
   useEffect(() => {
     const latest = latestTargetRef.current;
     const ref = latestRouteRef.current;
@@ -55,6 +57,7 @@ export function useChatPaneRoute(
     routeThreadKey,
   ]);
 
+  // oxlint-disable-next-line t3code/react-effect-budget -- Window keydown listener for the split shortcut.
   useEffect(() => {
     if (hasPaneLayout || target.kind !== "server" || renderState !== "ready") return;
     const handler = (event: KeyboardEvent) => {
