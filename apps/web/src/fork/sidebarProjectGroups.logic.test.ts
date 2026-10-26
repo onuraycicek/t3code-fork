@@ -8,13 +8,11 @@ import {
   type SidebarSection,
 } from "../components/Sidebar.logic";
 import {
-  buildSidebarProjectGroupItems,
   buildSidebarProjectThreadGroups,
   isSidebarProjectDropAllowed,
   mergeProjectOrder,
   moveProjectKey,
   projectDropIndex,
-  projectGroupedActiveRows,
 } from "./sidebarProjectGroups.logic";
 
 describe("project-grouped sidebar", () => {
