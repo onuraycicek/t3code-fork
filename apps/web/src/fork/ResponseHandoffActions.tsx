@@ -3,7 +3,7 @@ import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { createModelSelection } from "@t3tools/shared/model";
 import { ArrowRightLeftIcon, ScanSearchIcon } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 
 import { ModelPickerContent } from "../components/chat/ModelPickerContent";
 import { Button } from "../components/ui/button";
@@ -71,6 +71,7 @@ function ResponseHandoffButton(props: {
   readonly responseText: string;
 }) {
   const [open, setOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { label, Icon } = ACTIONS[props.kind];
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -88,8 +89,19 @@ function ResponseHandoffButton(props: {
         />
         <TooltipPopup side="top">{label}</TooltipPopup>
       </Tooltip>
-      <PopoverPopup align="start" className="before:hidden" padding="none">
-        {open ? <ResponseHandoffPicker {...props} onClose={() => setOpen(false)} /> : null}
+      <PopoverPopup
+        initialFocus={searchInputRef}
+        align="start"
+        className="before:hidden"
+        padding="none"
+      >
+        {open ? (
+          <ResponseHandoffPicker
+            {...props}
+            searchInputRef={searchInputRef}
+            onClose={() => setOpen(false)}
+          />
+        ) : null}
       </PopoverPopup>
     </Popover>
   );
@@ -101,6 +113,7 @@ function ResponseHandoffPicker(props: {
   readonly threadRef: ScopedThreadRef;
   readonly runId: RunId | null;
   readonly responseText: string;
+  readonly searchInputRef: RefObject<HTMLInputElement | null>;
   readonly onClose: () => void;
 }) {
   const { threadRef, kind } = props;
@@ -178,6 +191,7 @@ function ResponseHandoffPicker(props: {
 
   return (
     <ModelPickerContent
+      searchInputRef={props.searchInputRef}
       environmentId={threadRef.environmentId}
       activeInstanceId={activeInstanceId}
       model={current?.model ?? ""}
