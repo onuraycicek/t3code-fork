@@ -132,7 +132,7 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
 
   // Draft tabs follow their draft: promoted ones stop being tracked, ones whose
   // draft was discarded (e.g. after a reload) close instead of staying broken.
-  // oxlint-disable-next-line t3code/react-effect-budget -- Reconciles the pane store with draft promotions and discards made elsewhere.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Reconciles the pane store with draft promotions and discards made elsewhere.
   useEffect(() => {
     if (draftTabKeys.length === 0) return;
     const { untrack, close } = resolveDraftTabCleanup({
@@ -208,7 +208,7 @@ export function ChatPanes({ root }: { root: ChatPaneNode }) {
 
   // Pane and tab shortcuts (see FORK.md). Tab jumps use Alt+1..9 off macOS,
   // where Ctrl+digit is taken; Ctrl+Tab never leaves the focused pane.
-  // oxlint-disable-next-line t3code/react-effect-budget -- Window keydown listener for pane and tab shortcuts.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Window keydown listener for pane and tab shortcuts.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || isCommandPaletteOpen()) return;
@@ -718,7 +718,7 @@ function PaneStrip({
 }) {
   const tabsRef = useRef<HTMLDivElement | null>(null);
   // Keep the active tab in view when the strip overflows.
-  // oxlint-disable-next-line t3code/react-effect-budget -- Scrolls the DOM tab strip to the active tab.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Scrolls the DOM tab strip to the active tab.
   useEffect(() => {
     const active = tabsRef.current?.querySelector<HTMLElement>("[data-chat-tab-active='true']");
     active?.scrollIntoView({ block: "nearest", inline: "nearest" });
