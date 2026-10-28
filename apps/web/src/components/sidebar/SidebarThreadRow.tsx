@@ -1565,6 +1565,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               onOpenChange={setSnoozeMenuOpen}
               onSnooze={handleSnoozePreset}
               timestampFormat={props.timestampFormat}
+              environmentId={thread.environmentId}
             />
           ) : null
         }
