@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect } from "react";
 
-import { useEnvironmentIds } from "../state/environments";
+import { environmentSummaries } from "../state/presentation";
 import { environmentThreadShells } from "../state/threads";
 import { anyThreadRunning, shouldKeepAwake } from "./keepAwake.logic";
 import { useKeepAwakeRuntimeStore } from "./keepAwakeStore";
@@ -23,14 +23,14 @@ export const hasKeepAwakeBridge = () =>
  * Renders nothing; a no-op in the plain browser.
  */
 export function KeepAwakeSync() {
-  const environmentIds = useEnvironmentIds();
+  const environmentIds = useAtomValue(environmentSummaries.environmentIdsAtom);
   const mode = useForkPrefsStore((state) => state.keepAwakeMode);
   const anyRunning = useKeepAwakeRuntimeStore(
     (state) => Object.keys(state.runningByEnvironment).length > 0,
   );
   const wanted = shouldKeepAwake(mode, anyRunning);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Mirrors the wanted state into the desktop power-save blocker over IPC.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Mirrors the wanted state into the desktop power-save blocker over IPC.
   useEffect(() => {
     const bridge = window.forkBridge;
     if (!bridge) return;
@@ -39,7 +39,7 @@ export function KeepAwakeSync() {
   }, [wanted]);
 
   // Release on unmount (window reload); the main process also drops it when the window dies.
-  // oxlint-disable-next-line t3code/react-effect-budget -- Releases the power-save blocker on unmount.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Releases the power-save blocker on unmount.
   useEffect(
     () => () => {
       void window.forkBridge?.setKeepAwake(false);
@@ -56,7 +56,7 @@ export function KeepAwakeSync() {
 function EnvironmentRunningWatcher({ environmentId }: { environmentId: EnvironmentId }) {
   const threads = useAtomValue(environmentThreadShells.environmentThreadsAtom(environmentId));
   const running = anyThreadRunning(threads);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Publishes this environment's running state to the keep-awake store and clears it on unmount.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Publishes this environment's running state to the keep-awake store and clears it on unmount.
   useEffect(() => {
     const store = useKeepAwakeRuntimeStore.getState();
     store.setEnvironmentRunning(environmentId, running);
