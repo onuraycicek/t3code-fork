@@ -64,7 +64,7 @@ export function useProjectHeaderDrag(input: {
   const suppressClickRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
 
-  // oxlint-disable-next-line t3code/react-effect-budget -- Removes window drag listeners if the header unmounts mid-drag.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Removes window drag listeners if the header unmounts mid-drag.
   useEffect(() => () => cleanupRef.current?.(), []);
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
