@@ -55,7 +55,7 @@ export function useSidebarProjectGrouping<TThread extends GroupableThread>(input
     savedProjectOrder,
     projectGroups.map((group) => group.projectKey),
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- Persists the merged project order to localStorage once new projects appear.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Persists the merged project order to localStorage once new projects appear.
   useEffect(() => {
     if (active && projectGroups.length > 0 && projectOrder !== savedProjectOrder) {
       setSavedProjectOrder(projectOrder);
