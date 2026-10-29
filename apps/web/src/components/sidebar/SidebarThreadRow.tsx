@@ -1397,10 +1397,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
           ref: rowRef,
           role: "treeitem",
           tabIndex: -1,
-          ...{
-            "data-sidebar-row": threadKey,
-            "data-sidebar-parent": props.navigationParent,
-          },
+          "data-sidebar-row": threadKey,
+          "data-sidebar-parent": props.navigationParent,
           "aria-label": accessibility.label,
           "aria-current": accessibility.current,
           "aria-busy": isRegeneratingTitle || undefined,
