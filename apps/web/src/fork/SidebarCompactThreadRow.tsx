@@ -31,7 +31,11 @@ export type CompactRowStatusIcon =
 export function SidebarCompactThreadRow(props: {
   threadKey: string;
   liProps: ComponentProps<"li">;
-  rowProps: ComponentProps<"div">;
+  /** The sidebar's tree keyboard navigation finds rows by these attributes. */
+  rowProps: ComponentProps<"div"> & {
+    "data-sidebar-row": string;
+    "data-sidebar-parent": string | undefined;
+  };
   tooltipDisabled: boolean;
   tooltip: ReactNode;
   accessibleTitle: ReactNode;

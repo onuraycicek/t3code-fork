@@ -15,11 +15,7 @@ import { useEnvironmentSettings } from "../hooks/useSettings";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { cn } from "../lib/utils";
 import { getCustomModelOptionsByInstance } from "../modelSelection";
-import {
-  applyProviderInstanceSettings,
-  deriveProviderInstanceEntries,
-  sortProviderInstanceEntries,
-} from "../providerInstances";
+import { providerInstanceEntriesFor } from "../providerInstances";
 import { useEnvironmentProviders } from "../state/environments";
 import { useThreadProjection, useThreadShell } from "../state/entities";
 import { EMPTY_SERVER_PROVIDERS } from "../state/server";
@@ -124,13 +120,7 @@ function ResponseHandoffPicker(props: {
   const handleNewThread = useNewThreadHandler();
   const providers = providersByEnvironment.get(threadRef.environmentId) ?? EMPTY_SERVER_PROVIDERS;
   const current: ModelSelection | null = shell?.modelSelection ?? null;
-  const entries = sortProviderInstanceEntries(
-    applyProviderInstanceSettings(
-      deriveProviderInstanceEntries(providers),
-      settings,
-      shell?.projectId ?? null,
-    ),
-  );
+  const entries = providerInstanceEntriesFor(providers, settings, shell?.projectId ?? null);
   const modelOptions = getCustomModelOptionsByInstance(
     settings,
     providers,
