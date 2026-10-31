@@ -59,7 +59,7 @@ files only carry small hook-up edits:
   `chat/useThreadLifecycle.tsx`: one line in `onOpenRelatedThread` hands a
   subagent's tab back to its parent.
 - `DiffPanel.tsx`: reads the pane's thread from `useChatPane()`.
-- `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`.
+- `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`; a sent draft's redirect is also followed while the panes render.
 - `Sidebar.tsx`, `Sidebar.logic.ts`, `Sidebar.drag.ts`: call sites into
   `fork/useSidebarProjectGrouping`, `fork/sidebarProjectItems`,
   `fork/SidebarProjectGroupRows`. `sidebar/SidebarThreadRow.tsx`: the
