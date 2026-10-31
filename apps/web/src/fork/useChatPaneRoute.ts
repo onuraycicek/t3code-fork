@@ -24,8 +24,12 @@ export function useChatPaneRoute(
   const draftSession = useComposerDraftStore((store) =>
     draftId === null ? null : store.getDraftSession(draftId),
   );
-  const draftEnvironmentId = draftSession?.environmentId ?? null;
-  const draftThreadId = draftSession?.threadId ?? null;
+  // A sent draft is gone before its route follows the redirect; keep the panes on that thread.
+  const draftRedirect = useComposerDraftStore((store) =>
+    draftId === null ? null : store.getPromotedDraftRedirect(draftId),
+  );
+  const draftEnvironmentId = draftSession?.environmentId ?? draftRedirect?.environmentId ?? null;
+  const draftThreadId = draftSession?.threadId ?? draftRedirect?.threadId ?? null;
   // The thread the route is about: the server thread, or the draft's reserved one.
   const serverEnvironmentId = target.kind === "server" ? target.threadRef.environmentId : null;
   const serverThreadId = target.kind === "server" ? target.threadRef.threadId : null;
