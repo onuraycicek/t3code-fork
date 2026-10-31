@@ -110,6 +110,16 @@ export function ThreadRouteView({
   let redirect: React.ReactNode = null;
   if (paneRoot !== null) {
     view = <ChatPanes root={paneRoot} />;
+    // fork: a sent draft follows its redirect inside the panes, so its ChatView stays mounted.
+    if (target.kind === "draft" && !draftSession && draftRedirect) {
+      redirect = (
+        <Navigate
+          to="/$environmentId/$threadId"
+          params={buildThreadRouteParams(draftRedirect)}
+          replace
+        />
+      );
+    }
   } else if (target.kind === "draft") {
     if (draftSession) {
       view = (
