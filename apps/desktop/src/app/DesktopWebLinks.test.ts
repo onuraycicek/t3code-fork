@@ -10,116 +10,135 @@ import * as ElectronWindow from "../electron/ElectronWindow.ts";
 import { WEB_LINK_OPEN_CHANNEL } from "../ipc/channels.ts";
 import * as DesktopWebLinks from "./DesktopWebLinks.ts";
 
-const makeWindow = () => {
+const makeAppWindow = () => {
   const sent: Array<string> = [];
-  const revealed: Array<unknown> = [];
-  const open = () => {
-    const webContents = Object.assign(new NodeEvents.EventEmitter(), {
-      isDestroyed: () => false,
-      send: (channel: string, url: string) => {
-        if (channel === WEB_LINK_OPEN_CHANNEL) sent.push(url);
-      },
-    });
-    return { webContents } as unknown as Electron.BrowserWindow;
-  };
-  let window = Option.some(open());
-  const reload = () => {
-    if (Option.isSome(window)) {
-      window.value.webContents.emit("did-start-navigation", {
-        isMainFrame: true,
-        isSameDocument: false,
-      });
-    }
-  };
+  let destroyed = false;
+  const webContents = Object.assign(new NodeEvents.EventEmitter(), {
+    isDestroyed: () => destroyed,
+    send: (channel: string, url: string) => {
+      if (channel === WEB_LINK_OPEN_CHANNEL) sent.push(url);
+    },
+  });
+  const window = { webContents, isDestroyed: () => destroyed } as unknown as Electron.BrowserWindow;
+  const reload = () =>
+    webContents.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
   const close = () => {
-    const closed = window;
-    window = Option.none();
-    if (Option.isSome(closed)) closed.value.webContents.emit("destroyed");
+    destroyed = true;
+    webContents.emit("destroyed");
   };
-  const reopen = () => {
-    window = Option.some(open());
-  };
+  return { window, sent, reload, close };
+};
+
+const makeLayer = (windows: ReadonlyArray<ReturnType<typeof makeAppWindow>>) => {
+  const revealed: Array<unknown> = [];
+  const current = Effect.sync(() =>
+    Option.fromNullishOr(windows.find(({ window }) => !window.isDestroyed())?.window ?? null),
+  );
   const layer = DesktopWebLinks.layer.pipe(
     Layer.provide(
       Layer.succeed(DesktopWindow.DesktopWindow, {
-        activate: Effect.sync(() => void revealed.push(window)),
+        activate: Effect.flatMap(current, (window) =>
+          Effect.sync(() => void revealed.push(Option.getOrNull(window))),
+        ),
       } as unknown as DesktopWindow.DesktopWindow["Service"]),
     ),
     Layer.provide(
       Layer.succeed(
         ElectronWindow.ElectronWindow,
         ElectronWindow.ElectronWindow.of({
-          main: Effect.sync(() => window),
-          currentMainOrFirst: Effect.sync(() => window),
+          currentAppWindow: current,
           reveal: (target: Electron.BrowserWindow) => Effect.sync(() => void revealed.push(target)),
         } as unknown as ElectronWindow.ElectronWindow["Service"]),
       ),
     ),
   );
-  return { sent, revealed, layer, reload, close, reopen };
+  return { revealed, layer };
 };
 
 describe("DesktopWebLinks", () => {
   it.effect("holds links until the renderer listens, then delivers them in order", () => {
-    const { sent, revealed, layer } = makeWindow();
+    const app = makeAppWindow();
+    const { revealed, layer } = makeLayer([app]);
     return Effect.gen(function* () {
       const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
       yield* webLinks.receive("https://example.com/first");
       yield* webLinks.receive("https://example.com/second");
-      assert.deepStrictEqual(sent, []);
+      assert.deepStrictEqual(app.sent, []);
 
-      yield* webLinks.setRendererReady(true);
-      assert.deepStrictEqual(sent, ["https://example.com/first", "https://example.com/second"]);
+      yield* webLinks.setRendererReady(true, app.window);
+      assert.deepStrictEqual(app.sent, ["https://example.com/first", "https://example.com/second"]);
       assert.strictEqual(revealed.length, 1);
 
       yield* webLinks.receive("https://example.com/third");
-      assert.deepStrictEqual(sent.at(-1), "https://example.com/third");
+      assert.deepStrictEqual(app.sent.at(-1), "https://example.com/third");
 
-      yield* webLinks.setRendererReady(false);
+      yield* webLinks.setRendererReady(false, app.window);
       yield* webLinks.receive("https://example.com/fourth");
-      assert.strictEqual(sent.length, 3);
+      assert.strictEqual(app.sent.length, 3);
       assert.strictEqual(revealed.length, 2);
     }).pipe(Effect.provide(layer));
   });
 
   it.effect("holds links that arrive while the web app reloads until it listens again", () => {
-    const { sent, layer, reload } = makeWindow();
+    const app = makeAppWindow();
+    const { layer } = makeLayer([app]);
     return Effect.gen(function* () {
       const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
-      yield* webLinks.setRendererReady(true);
-      reload();
+      yield* webLinks.setRendererReady(true, app.window);
+      app.reload();
       yield* webLinks.receive("https://example.com/during-reload");
-      assert.deepStrictEqual(sent, []);
+      assert.deepStrictEqual(app.sent, []);
 
-      yield* webLinks.setRendererReady(true);
-      assert.deepStrictEqual(sent, ["https://example.com/during-reload"]);
+      yield* webLinks.setRendererReady(true, app.window);
+      assert.deepStrictEqual(app.sent, ["https://example.com/during-reload"]);
     }).pipe(Effect.provide(layer));
   });
 
-  it.effect("asks for a window when a link arrives after the main window closed", () => {
-    const { sent, revealed, layer, close, reopen } = makeWindow();
+  it.effect("delivers to another ready window after the current one closes", () => {
+    const first = makeAppWindow();
+    const second = makeAppWindow();
+    const loading = makeAppWindow();
+    const { revealed, layer } = makeLayer([first, loading, second]);
     return Effect.gen(function* () {
       const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
-      close();
+      yield* webLinks.setRendererReady(true, first.window);
+      yield* webLinks.setRendererReady(true, second.window);
+      yield* webLinks.receive("https://example.com/current");
+      assert.deepStrictEqual(first.sent, ["https://example.com/current"]);
+
+      first.close();
+      yield* webLinks.receive("https://example.com/after-close");
+      assert.deepStrictEqual(second.sent, ["https://example.com/after-close"]);
+      assert.deepStrictEqual(loading.sent, []);
+      assert.strictEqual(revealed.at(-1), second.window);
+    }).pipe(Effect.provide(layer));
+  });
+
+  it.effect("asks for a window when a link arrives after the last window closed", () => {
+    const first = makeAppWindow();
+    const windows = [first];
+    const { revealed, layer } = makeLayer(windows);
+    return Effect.gen(function* () {
+      const webLinks = yield* DesktopWebLinks.DesktopWebLinks;
+      first.close();
       yield* webLinks.receive("https://example.com/at-launch");
       assert.strictEqual(revealed.length, 0);
 
-      reopen();
-      yield* webLinks.setRendererReady(true);
-      assert.deepStrictEqual(sent, ["https://example.com/at-launch"]);
+      const second = makeAppWindow();
+      windows.push(second);
+      yield* webLinks.setRendererReady(true, second.window);
+      assert.deepStrictEqual(second.sent, ["https://example.com/at-launch"]);
       assert.strictEqual(revealed.length, 1);
 
-      close();
+      second.close();
       yield* webLinks.receive("https://example.com/after-close");
-      assert.deepStrictEqual(sent, ["https://example.com/at-launch"]);
+      assert.deepStrictEqual(second.sent, ["https://example.com/at-launch"]);
       assert.strictEqual(revealed.length, 2);
 
-      reopen();
-      yield* webLinks.setRendererReady(true);
-      assert.deepStrictEqual(sent, [
-        "https://example.com/at-launch",
-        "https://example.com/after-close",
-      ]);
+      const third = makeAppWindow();
+      windows.push(third);
+      yield* webLinks.setRendererReady(true, third.window);
+      assert.deepStrictEqual(third.sent, ["https://example.com/after-close"]);
     }).pipe(Effect.provide(layer));
   });
 });

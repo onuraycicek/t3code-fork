@@ -9,6 +9,7 @@ export type ThreadActionMenuId =
   | "open-in-split"
   | "new-thread-on-branch"
   | "filter-by-project"
+  | "open-project-in-new-window"
   | "turn-into-project"
   | "project-settings"
   | "pin"
@@ -135,6 +136,7 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
   return ![
     "find",
     "new-thread-on-branch",
+    "open-project-in-new-window",
     "project-settings",
     "mark-unread",
     "share-guest",
@@ -242,6 +244,13 @@ export function buildThreadActionMenuItems(
               ? resolve(msg("Show all projects"))
               : resolve(msg("Filter by {project}", { project: state.projectFilter.label })),
             icon: "folder-tree",
+          },
+          {
+            id: "open-project-in-new-window" as const,
+            label: resolve(
+              msg("Open {project} in New Window", { project: state.projectFilter.label }),
+            ),
+            icon: "app-window",
           },
         ]
       : []),
