@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork UI is English-only; translating it would touch upstream locale catalogs every sync */
 import {
   AlarmClockIcon,
   CheckIcon,
@@ -38,7 +39,6 @@ export function SidebarCompactThreadRow(props: {
   };
   tooltipDisabled: boolean;
   tooltip: ReactNode;
-  accessibleTitle: ReactNode;
   /** The rename input, or null to render the plain title. */
   renameInput: ReactNode;
   title: string;
@@ -74,7 +74,6 @@ export function SidebarCompactThreadRow(props: {
     >
       <Tooltip disabled={props.tooltipDisabled}>
         <TooltipTrigger render={<div data-testid="sidebar-row-card" {...props.rowProps} />}>
-          {props.accessibleTitle}
           <div className="relative z-10 flex h-8 min-w-0 items-center gap-2 pr-2 pl-5">
             <span
               data-compact-row-status={icon ?? (props.isUnread ? "unread" : "idle")}
@@ -107,7 +106,6 @@ export function SidebarCompactThreadRow(props: {
             {props.draftIndicator}
             {props.renameInput ?? (
               <span
-                aria-hidden
                 className={cn(
                   "min-w-0 flex-1 truncate text-sm font-normal",
                   props.isActive || props.isUnread || props.isWoke || props.needsInput
@@ -177,7 +175,7 @@ export function SidebarCompactThreadRow(props: {
 }
 
 /** Icon-only hover buttons for the compact row's action slot. */
-export function CompactRowActionButton(props: {
+function CompactRowActionButton(props: {
   label: string;
   onClick: ComponentProps<"button">["onClick"];
   onPointerDown?: ComponentProps<"button">["onPointerDown"];

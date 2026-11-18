@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 
 import { updateRequesters } from "./keepAwake.logic.ts";
 
-export const FORK_KEEP_AWAKE_CHANNEL = "fork:keep-awake:set";
+const FORK_KEEP_AWAKE_CHANNEL = "fork:keep-awake:set";
 
 /**
  * Fork-only: holds an Electron `prevent-app-suspension` blocker (the system stays
