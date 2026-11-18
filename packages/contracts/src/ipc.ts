@@ -1085,6 +1085,21 @@ export type DesktopMediaRead = typeof DesktopMediaReadSchema.Type;
 export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
+export const DesktopOpenAppWindowInputSchema = Schema.Struct({
+  projectScopeKeys: Schema.Array(Schema.String),
+});
+export type DesktopOpenAppWindowInput = typeof DesktopOpenAppWindowInputSchema.Type;
+
+/** One app window's view of preview ownership; each window renders only the sessions it owns. */
+export const DesktopPreviewOwnershipSchema = Schema.Struct({
+  version: Schema.Number,
+  /** Sessions nobody claimed render in the host window. */
+  isHost: Schema.Boolean,
+  claimedHere: Schema.Array(Schema.String),
+  claimedElsewhere: Schema.Array(Schema.String),
+});
+export type DesktopPreviewOwnership = typeof DesktopPreviewOwnershipSchema.Type;
+
 export interface DesktopBridge {
   getAppBranding: () => DesktopAppBranding | null;
   /** `null` until the desktop host has read the login shell's environment; ask again later. */
@@ -1120,6 +1135,10 @@ export interface DesktopBridge {
   getLocalEnvironmentBearerToken: () => Promise<string>;
   getClientSettings: () => Promise<ClientSettings | null>;
   setClientSettings: (settings: ClientSettings) => Promise<void>;
+  /** Fires when another app window saved client settings. */
+  onClientSettingsChanged: (listener: () => void) => () => void;
+  /** Opens another app window whose sidebar starts scoped to these project keys; empty means all. */
+  openAppWindow: (input: DesktopOpenAppWindowInput) => Promise<void>;
   getConnectionCatalog: () => Promise<string | null>;
   setConnectionCatalog: (catalog: string) => Promise<boolean>;
   discoverSshHosts: () => Promise<readonly DesktopDiscoveredSshHost[]>;
@@ -1391,6 +1410,10 @@ export interface DesktopPreviewBridge {
   onPointerEvent: (listener: (event: DesktopPreviewPointerEvent) => void) => () => void;
   onOpenLink: (listener: (event: DesktopPreviewOpenLinkEvent) => void) => () => void;
   onFindResult: (listener: (event: DesktopPreviewFindResultEvent) => void) => () => void;
+  getOwnership: () => Promise<DesktopPreviewOwnership>;
+  onOwnershipChange: (listener: (ownership: DesktopPreviewOwnership) => void) => () => void;
+  /** Moves a preview session's webview into this window. */
+  claimSession: (sessionKey: string) => Promise<void>;
 }
 
 export type ConfirmDialogVariant = "default" | "destructive";
