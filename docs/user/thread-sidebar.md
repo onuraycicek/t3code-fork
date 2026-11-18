@@ -39,6 +39,18 @@ While enabled, Active is sorted by most recent return (manual reordering is paus
 
 Enable **Settings → Labs → Boring sidebar (group by project)** on web/desktop (per device) to group active threads into collapsible project folders. Pinned threads stay above; Snoozed and Settled stay below. In this mode, the Working section and sidebar drag-reordering are disabled (dragging a thread onto the composer still works).
 
+### Open a project in its own window
+
+Right-click a thread and choose **Open _project_ in New Window**, or right-click a project folder
+and choose **Open in New Window**. On desktop you can also use **File → New Window** or **Window →
+New Window**, which copies the current window's project filter. On the web, the new window opens
+as a browser tab.
+
+Every window shows the same threads and settings. Only the project filter is per window, so you
+can keep one window per project or set of projects. The filter you pick in your first window is
+the one T3 Code remembers for next time; filters in extra windows are not. When you quit the
+desktop app, only the main window comes back.
+
 ## Settle, snooze, and archive
 
 | Action      | When to use          | Effect                                                                                                                                         |

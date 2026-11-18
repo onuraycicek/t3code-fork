@@ -58,6 +58,7 @@ import {
   pasteAsText,
   probeRemoteEditors,
   revealWindow,
+  openAppWindow,
   pickFolder,
   toLocalBackendPath,
   pickProjectFavicon,
@@ -175,6 +176,7 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(appleSpeechTranscribe);
   yield* ipc.handle(pasteAsText);
   yield* ipc.handle(revealWindow);
+  yield* ipc.handle(openAppWindow);
   yield* ipc.handle(syncHtmlFullscreen);
   yield* ipc.handle(probeRemoteEditors);
   yield* ipc.handle(getUpdateState);

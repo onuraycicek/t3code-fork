@@ -193,6 +193,7 @@ describe("desktop app control server", () => {
           if (channel === DESKTOP_APP_ACTIVATION_REQUEST_CHANNEL) resolveDispatched();
         },
       });
+      const window = { webContents, isDestroyed: () => false } as unknown as Electron.BrowserWindow;
 
       const layer = DesktopAppActivation.layer.pipe(
         Layer.provide(
@@ -208,7 +209,9 @@ describe("desktop app control server", () => {
         ),
         Layer.provide(
           Layer.succeed(ElectronWindow.ElectronWindow, {
-            main: Effect.succeedSome({ webContents } as unknown as Electron.BrowserWindow),
+            main: Effect.succeedSome(window),
+            currentAppWindow: Effect.succeedSome(window),
+            reveal: () => Effect.void,
           } as unknown as ElectronWindow.ElectronWindow["Service"]),
         ),
         Layer.provide(NodeServices.layer),
@@ -217,7 +220,7 @@ describe("desktop app control server", () => {
       yield* Effect.gen(function* () {
         const activation = yield* DesktopAppActivation.DesktopAppActivation;
         yield* activation.start;
-        yield* activation.setRendererReady(true);
+        yield* activation.setRendererReady(true, window);
 
         const response = exchange(target.address, request("before-crash", platform));
         yield* Effect.promise(() => dispatched);

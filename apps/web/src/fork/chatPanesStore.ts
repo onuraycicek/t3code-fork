@@ -27,6 +27,7 @@ import {
   type PaneEdge,
 } from "./chatPanes.logic";
 import { resolveStorage } from "../lib/storage";
+import { chatPanesBackingStorage } from "./windowPaneStorage";
 import { randomUUID } from "../lib/utils";
 
 /**
@@ -375,9 +376,7 @@ export const useChatPanesStore = create<ChatPanesState>()(
       name: "t3code:fork-chat-panes:v1",
       version: STORAGE_VERSION,
       migrate: migratePersisted,
-      storage: createJSONStorage(() =>
-        resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
-      ),
+      storage: createJSONStorage(() => resolveStorage(chatPanesBackingStorage())),
       partialize: (state) => ({
         root: state.root,
         focusedPaneId: state.focusedPaneId,

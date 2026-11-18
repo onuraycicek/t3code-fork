@@ -207,7 +207,7 @@ describe("DesktopClerk", () => {
           }),
       } as unknown as ElectronApp.ElectronApp["Service"];
       const electronWindow = {
-        currentMainOrFirst: Effect.succeedSome(window),
+        currentAppWindow: Effect.succeedSome(window),
         reveal: (value: unknown) => Effect.sync(() => revealed.resolve(value)),
       } as unknown as ElectronWindow.ElectronWindow["Service"];
 
@@ -326,7 +326,7 @@ it.effect(
         }),
     } as unknown as ElectronApp.ElectronApp["Service"];
     const electronWindow = {
-      currentMainOrFirst: Effect.succeedSome(window),
+      currentAppWindow: Effect.succeedSome(window),
       reveal: () => Effect.sync(() => revealed.resolve()),
     } as unknown as ElectronWindow.ElectronWindow["Service"];
     return Effect.gen(function* () {
