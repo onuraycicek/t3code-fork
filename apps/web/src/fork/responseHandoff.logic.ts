@@ -22,8 +22,8 @@ export interface ResponseHandoffInput {
   readonly changedFiles: ReadonlyArray<ResponseHandoffChangedFile>;
 }
 
-export const HANDOFF_REQUEST_MAX_CHARS = 4_000;
-export const HANDOFF_RESPONSE_MAX_CHARS = 12_000;
+const HANDOFF_REQUEST_MAX_CHARS = 4_000;
+const HANDOFF_RESPONSE_MAX_CHARS = 12_000;
 export const HANDOFF_MAX_FILES = 40;
 
 /** Keeps the head of long text and says how much was cut. */
