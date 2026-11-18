@@ -22,7 +22,7 @@ type HoldProjection = Pick<
 >;
 
 /** A message the agent or server wrote to resume itself (background wake, delegated result). */
-export function forkIsAgentWake(message: OrchestrationV2ConversationMessage | undefined): boolean {
+function forkIsAgentWake(message: OrchestrationV2ConversationMessage | undefined): boolean {
   return (
     message !== undefined &&
     (message.notification !== undefined ||
