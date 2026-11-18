@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork UI is English-only; translating it would touch upstream locale catalogs every sync */
 import { SettingsRow } from "../components/settings/settingsLayout";
 import {
   Select,

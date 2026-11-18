@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork UI is English-only; translating it would touch upstream locale catalogs every sync */
 export type KeepAwakeMode = "off" | "working" | "always";
 
 export const KEEP_AWAKE_MODES: ReadonlyArray<{ value: KeepAwakeMode; label: string }> = [
@@ -11,7 +12,7 @@ export function isKeepAwakeMode(value: unknown): value is KeepAwakeMode {
 }
 
 /** Thread shell statuses that mean a turn is in flight (same set the thread keep-alive uses). */
-export function isThreadTurnRunning(thread: {
+function isThreadTurnRunning(thread: {
   readonly status: string;
   readonly archivedAt?: unknown;
 }): boolean {
