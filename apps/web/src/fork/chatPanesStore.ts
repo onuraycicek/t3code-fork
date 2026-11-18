@@ -93,15 +93,6 @@ function migratePersisted(persisted: unknown, version: number): unknown {
   return { ...record, root: migrateNode(record.root), history: [] };
 }
 
-/**
- * While a Ctrl+Tab walk is in progress the recency order stays frozen; the
- * walk commits its landing tab when the modifier is released.
- */
-let historyFrozen = false;
-export function freezeChatPaneHistory(frozen: boolean): void {
-  historyFrozen = frozen;
-}
-
 interface ChatPanesState {
   root: ChatPaneNode | null;
   focusedPaneId: ChatPaneId | null;
@@ -174,7 +165,7 @@ function sameThread(a: ScopedThreadRef | null, b: ScopedThreadRef | null): boole
 }
 
 function visit(history: readonly string[], key: string | null): readonly string[] {
-  return key === null || historyFrozen ? history : touchHistory(history, key);
+  return key === null ? history : touchHistory(history, key);
 }
 
 function pickFocusedLeaf(root: ChatPaneNode, focusedPaneId: ChatPaneId | null) {
@@ -416,15 +407,6 @@ export const useChatPanesStore = create<ChatPanesState>()(
     },
   ),
 );
-
-/** The focused pane's active thread, which the route should show. */
-export function selectFocusedPaneThread(state: Pick<ChatPanesState, "root" | "focusedPaneId">) {
-  if (!state.root || !state.focusedPaneId) return null;
-  const leaf = findLeaf(state.root, state.focusedPaneId);
-  return leaf ? leafActiveThread(leaf) : null;
-}
-
-export { sameThread as sameChatPaneThread };
 
 /**
  * Opens `threadRef` (or an empty pane when null) beside the focused pane, or
