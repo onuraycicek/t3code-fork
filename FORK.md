@@ -45,6 +45,14 @@ Two features on top of upstream T3 Code:
   `apps/server/src/fork/terminalMove.ts` (`terminal.move` RPC); web:
   `fork/MoveTerminalDialog.tsx`, `fork/terminalMoveStore.ts`.
 
+- **Multiple windows (upstream PR #37819, carried until upstream merges it).**
+  File → New Window / Window → New Window, or "Open in New Window" on a thread
+  or project; each window has its own project filter. Applied as-is from the PR
+  (base 055b44919e). Fork part: `fork/windowPaneStorage.ts` keeps a secondary
+  window's split/tab layout in its own sessionStorage, so only the main window's
+  layout is remembered in localStorage (`chatPanesStore.ts` storage getter).
+  When upstream merges #37819, drop the carried diff and keep only the fork part.
+
 ## Where the code lives (keep it this way: fewer rebase conflicts)
 
 All fork code is in `apps/web/src/fork/`, `apps/desktop/src/fork/` and
