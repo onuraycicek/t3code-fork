@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork UI is English-only; translating it would touch upstream locale catalogs every sync */
 import type { OrchestrationV2TurnItem, RunId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
