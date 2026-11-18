@@ -2,7 +2,7 @@ import type { SidebarListItem } from "../components/Sidebar.logic";
 import { sidebarListItemId } from "../components/Sidebar.logic";
 
 /** Active rows each project shows before "Show more". */
-export const SIDEBAR_PROJECT_INITIAL_THREAD_COUNT = 5;
+const SIDEBAR_PROJECT_INITIAL_THREAD_COUNT = 5;
 
 export type SidebarProjectThreadGroup<TThread> = {
   readonly projectKey: string;
