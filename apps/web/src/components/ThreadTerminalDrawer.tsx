@@ -454,6 +454,7 @@ function terminalContextMenuItems(options: {
     { id: "paste", label: m(msg("Paste")), ...(options.readOnly ? { disabled: true } : {}) },
     { id: "select-all", label: m(msg("Select all", { $context: "select all terminal text" })) },
     { id: "scroll-to-bottom", label: m(msg("Jump to latest")) },
+    // oxlint-disable-next-line t3code/no-untranslated-copy -- fork copy, English-only
     { id: "move-to-chat", label: "Move to chat…", ...(options.readOnly ? { disabled: true } : {}) }, // fork
   ];
 }
@@ -1999,6 +2000,7 @@ export default function ThreadTerminalDrawer({
               disabled={!canOperateTerminal}
               className="p-1 text-foreground/90 transition-colors hover:bg-accent"
               onClick={() => moveTerminalToChat(resolvedActiveTerminalId)}
+              // oxlint-disable-next-line t3code/no-untranslated-copy -- fork copy, English-only
               label="Move Terminal to Chat…"
             >
               <ArrowRightLeft className="size-3.25" />
@@ -2083,6 +2085,7 @@ export default function ThreadTerminalDrawer({
                     disabled={!canOperateTerminal}
                     className="inline-flex h-full items-center border-l border-border/70 px-1 text-foreground/90 transition-colors hover:bg-accent/70"
                     onClick={() => moveTerminalToChat(resolvedActiveTerminalId)}
+                    // oxlint-disable-next-line t3code/no-untranslated-copy -- fork copy, English-only
                     label="Move Terminal to Chat…"
                   >
                     <ArrowRightLeft className="size-3.25" />

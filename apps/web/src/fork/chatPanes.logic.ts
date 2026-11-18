@@ -32,8 +32,8 @@ export interface ChatPaneSplit {
 
 export type ChatPaneNode = ChatPaneLeaf | ChatPaneSplit;
 
-export const MIN_PANE_RATIO = 0.15;
-export const MAX_PANE_RATIO = 0.85;
+const MIN_PANE_RATIO = 0.15;
+const MAX_PANE_RATIO = 0.85;
 /** Outer share of a pane that turns a drop into a split on that edge. */
 const EDGE_ZONE_FRACTION = 0.2;
 
@@ -48,7 +48,7 @@ export function collectLeaves(node: ChatPaneNode): ChatPaneLeaf[] {
     : [...collectLeaves(node.first), ...collectLeaves(node.second)];
 }
 
-export function findNode(node: ChatPaneNode, id: ChatPaneId): ChatPaneNode | null {
+function findNode(node: ChatPaneNode, id: ChatPaneId): ChatPaneNode | null {
   if (node.id === id) return node;
   if (node.kind === "leaf") return null;
   return findNode(node.first, id) ?? findNode(node.second, id);
@@ -86,14 +86,6 @@ export function findLeafByThreadKey(node: ChatPaneNode, threadKey: string): Chat
       leaf.tabs.some((tab) => scopedThreadKey(tab) === threadKey),
     ) ?? null
   );
-}
-
-/** The pane holding a tab for `threadRef`, if any. */
-export function findLeafByThread(
-  node: ChatPaneNode,
-  threadRef: ScopedThreadRef,
-): ChatPaneLeaf | null {
-  return findLeafByThreadKey(node, scopedThreadKey(threadRef));
 }
 
 function edgeToSplit(edge: PaneEdge): { direction: SplitDirection; side: "first" | "second" } {
@@ -178,24 +170,6 @@ export function setPaneRatio(root: ChatPaneNode, splitId: ChatPaneId, ratio: num
 }
 
 /**
- * Moves pane `sourceId` beside `targetId` on `edge`. The source keeps its id,
- * so its mounted view and focus survive the move.
- */
-export function movePane(
-  root: ChatPaneNode,
-  sourceId: ChatPaneId,
-  targetId: ChatPaneId,
-  edge: PaneEdge,
-  splitId: ChatPaneId,
-): ChatPaneNode {
-  const source = findLeaf(root, sourceId);
-  if (!source || sourceId === targetId) return root;
-  const without = removePane(root, sourceId);
-  if (!without || !findNode(without, targetId)) return root;
-  return splitPane(without, targetId, edge, source, splitId);
-}
-
-/**
  * Where a drop lands on a pane, Orca style: the outer 20% of the width splits
  * left/right, the outer 20% of the height splits top/bottom, the rest joins the
  * pane's tabs. `headerHeight` keeps the pane's own strip out of the
@@ -245,7 +219,7 @@ export function dropPreviewRect(
   }
 }
 
-export const THREAD_HISTORY_LIMIT = 100;
+const THREAD_HISTORY_LIMIT = 100;
 
 /** Moves `threadKey` to the front of a recency list. */
 export function touchHistory(history: readonly string[], threadKey: string): readonly string[] {

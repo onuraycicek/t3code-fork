@@ -177,7 +177,8 @@ export function buildThreadActionMenuItems(
       ? [{ id: "find" as const, label: resolve(msg("Find in thread")), icon: "text-search" }]
       : []),
     ...(state.canOpenInSplit
-      ? [{ id: "open-in-split" as const, label: "Open in split", icon: "panel-right" }]
+      ? // oxlint-disable-next-line t3code/no-untranslated-copy -- fork copy, English-only
+        [{ id: "open-in-split" as const, label: "Open in split", icon: "panel-right" }]
       : []),
     ...(state.branch
       ? [

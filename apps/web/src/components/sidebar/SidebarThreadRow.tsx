@@ -1592,7 +1592,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         }}
         tooltipDisabled={snoozeMenuOpen || !!sortable?.isDragging}
         tooltip={detailsTooltip}
-        accessibleTitle={accessibleTitle}
         renameInput={isRenaming && canOperateThread ? title : null}
         title={thread.title}
         isActive={props.isActive}

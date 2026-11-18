@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-untranslated-copy -- fork UI is English-only; translating it would touch upstream locale catalogs every sync */
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { ChevronRightIcon, FolderIcon, PlusIcon } from "lucide-react";
