@@ -93,7 +93,7 @@ const routeThroughTunnel = (
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(ElectronWindow.ElectronWindow, {
-              currentMainOrFirst: Effect.succeedSome(window as unknown as Electron.BrowserWindow),
+              currentAppWindow: Effect.succeedSome(window as unknown as Electron.BrowserWindow),
             }),
             NodeFileSystem.layer,
             host ?? Layer.empty,
