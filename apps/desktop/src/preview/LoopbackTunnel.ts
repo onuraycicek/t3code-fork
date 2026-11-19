@@ -360,7 +360,7 @@ const make = Effect.gen(function* () {
   const requestAccess = Effect.fn("LoopbackTunnel.requestAccess")(function* (
     environmentId: string,
   ) {
-    const window = yield* electronWindow.currentMainOrFirst;
+    const window = yield* electronWindow.currentAppWindow;
     if (Option.isNone(window) || window.value.isDestroyed()) return null;
     const requestId = `preview-tunnel-${requestCount++}`;
     const answer = yield* Deferred.make<string | null>();
