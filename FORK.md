@@ -48,10 +48,25 @@ Two features on top of upstream T3 Code:
 - **Multiple windows (upstream PR #37819, carried until upstream merges it).**
   File → New Window / Window → New Window, or "Open in New Window" on a thread
   or project; each window has its own project filter. Applied as-is from the PR
-  (base 055b44919e). Fork part: `fork/windowPaneStorage.ts` keeps a secondary
-  window's split/tab layout in its own sessionStorage, so only the main window's
-  layout is remembered in localStorage (`chatPanesStore.ts` storage getter).
-  When upstream merges #37819, drop the carried diff and keep only the fork part.
+  (base 055b44919e). Each window works in its own workspace (below). When
+  upstream merges #37819, drop the carried diff.
+
+- **Workspaces.** A workspace is a named tab/split layout (a working setup, e.g.
+  one per app). A collapsible "Workspaces" list sits at the top of the
+  sidebar: click a row to switch, "+" adds one (and starts renaming it), hover a
+  row for rename/delete, double-click renames. There is always at least
+  one ("Default" on first run, which takes over the layout from before
+  workspaces); the sidebar still lists every thread, and whatever is opened or
+  arranged goes into the selected workspace. Switching saves the current layout,
+  loads the other one and moves the route to its focused tab. Workspaces live in
+  localStorage (`t3code:fork-workspaces:v1`) and survive restarts; the main
+  window reopens its last workspace. A workspace is open in one window at most
+  (heartbeat lease in `t3code:fork-workspace-leases:v1`); a new window takes the
+  first free one or creates "Workspace N", and busy ones show "Other window".
+  Writes re-read storage and touch only this window's workspace, so windows do
+  not overwrite each other. Code: `fork/workspacesStore.ts`,
+  `fork/workspaces.logic.ts`, `fork/WorkspaceSwitcher.tsx`; `chatPanesStore.ts`
+  no longer persists itself (`loadLayout` / `snapshotPaneLayout`).
 
 ## Where the code lives (keep it this way: fewer rebase conflicts)
 
@@ -68,6 +83,7 @@ files only carry small hook-up edits:
   subagent's tab back to its parent.
 - `DiffPanel.tsx`: reads the pane's thread from `useChatPane()`.
 - `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`; a sent draft's redirect is also followed while the panes render.
+- `Sidebar.tsx`: `<WorkspaceSwitcher />` under the chrome header.
 - `Sidebar.tsx`, `Sidebar.logic.ts`, `Sidebar.drag.ts`: call sites into
   `fork/useSidebarProjectGrouping`, `fork/sidebarProjectItems`,
   `fork/SidebarProjectGroupRows`. `sidebar/SidebarThreadRow.tsx`: the
