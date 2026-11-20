@@ -42,6 +42,7 @@ import {
   type ThreadNotificationObservation,
 } from "./ThreadNotificationCoordinator.logic";
 import { toastManager } from "./ui/toast";
+import { openNotifiedThread, workspaceNotificationLabel } from "../fork/workspaceNavigation";
 
 interface NotificationState extends ThreadNotificationObservation {
   readonly raw: OrchestrationV2ThreadShell;
@@ -172,7 +173,7 @@ export function startThreadNotifications(
         onRemove: (): void => forgetToast(toastKey, toastId),
         type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
         title,
-        description: thread.title,
+        description: workspaceNotificationLabel(environmentId, thread.id, thread.title),
         data: {
           hideCopyButton: true,
           leadingIcon:
@@ -192,10 +193,7 @@ export function startThreadNotifications(
           children: m(msg("Open thread")),
           onClick: () => {
             toastManager.close(toastId);
-            void router.navigate({
-              to: "/$environmentId/$threadId",
-              params: { environmentId, threadId: thread.id },
-            });
+            openNotifiedThread(environmentId, thread.id, (options) => router.navigate(options));
           },
         },
       });
@@ -211,7 +209,7 @@ export function startThreadNotifications(
       return;
     try {
       const notification = new Notification(title, {
-        body: thread.title,
+        body: workspaceNotificationLabel(environmentId, thread.id, thread.title),
         tag: threadNotificationTag(environmentId, thread.id),
         silent: true,
         // Windows drops clicks after a toast moves into Notification Center.
@@ -222,10 +220,7 @@ export function startThreadNotifications(
         notification.close();
         window.focus();
         void window.desktopBridge?.revealWindow().catch(() => undefined);
-        void router.navigate({
-          to: "/$environmentId/$threadId",
-          params: { environmentId, threadId: thread.id },
-        });
+        openNotifiedThread(environmentId, thread.id, (options) => router.navigate(options));
       });
     } catch {
       // Some browsers expose Notification but reject desktop presentation.
