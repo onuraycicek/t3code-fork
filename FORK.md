@@ -64,7 +64,14 @@ Two features on top of upstream T3 Code:
   (heartbeat lease in `t3code:fork-workspace-leases:v1`); a new window takes the
   first free one or creates "Workspace N", and busy ones show "Other window".
   Writes re-read storage and touch only this window's workspace, so windows do
-  not overwrite each other. Code: `fork/workspacesStore.ts`,
+  not overwrite each other.
+  Activity: every row sums its tabs' status (same pill as the tab strip, bucketed
+  as waiting / failed / working / completed-unseen); every workspace expands to
+  list their tabs in layout order (never re-sorted by status), and clicking one
+  switches there and brings that tab forward. An unsent draft belongs to one
+  workspace (opening it elsewhere moves it), because upstream keeps one draft per
+  project. Notifications read "Workspace · Thread" and open the thread in the
+  workspace that has its tab (`fork/workspaceNavigation.ts`). Code: `fork/workspacesStore.ts`,
   `fork/workspaces.logic.ts`, `fork/WorkspaceSwitcher.tsx`; `chatPanesStore.ts`
   no longer persists itself (`loadLayout` / `snapshotPaneLayout`).
 
@@ -84,6 +91,7 @@ files only carry small hook-up edits:
 - `DiffPanel.tsx`: reads the pane's thread from `useChatPane()`.
 - `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`; a sent draft's redirect is also followed while the panes render.
 - `Sidebar.tsx`: `<WorkspaceSwitcher />` under the chrome header.
+- `ThreadNotificationCoordinator.tsx`: notification text via `workspaceNotificationLabel`, clicks via `openNotifiedThread`.
 - `Sidebar.tsx`, `Sidebar.logic.ts`, `Sidebar.drag.ts`: call sites into
   `fork/useSidebarProjectGrouping`, `fork/sidebarProjectItems`,
   `fork/SidebarProjectGroupRows`. `sidebar/SidebarThreadRow.tsx`: the

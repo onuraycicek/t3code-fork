@@ -1,3 +1,5 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { create } from "zustand";
 
 import { randomUUID } from "../lib/utils";
@@ -9,7 +11,13 @@ import {
   useChatPanesStore,
   type PaneLayout,
 } from "./chatPanesStore";
-import { pickWorkspaceForWindow, nextWorkspaceName } from "./workspaces.logic";
+import { findLeafByThreadKey } from "./chatPanes.logic";
+import {
+  layoutTabs,
+  nextWorkspaceName,
+  pickWorkspaceForWindow,
+  withoutDraftTabs,
+} from "./workspaces.logic";
 
 // Workspaces: named tab/split layouts, kept in localStorage. Each window works in one
 // workspace at a time and a workspace is open in one window at most (lease below).
@@ -41,10 +49,17 @@ interface StoredWorkspaces {
   readonly mainActiveId: string | null;
 }
 
+export interface WorkspaceSummary {
+  readonly id: string;
+  readonly name: string;
+  /** Tabs in layout order (never re-sorted by activity). */
+  readonly tabs: readonly ScopedThreadRef[];
+}
+
 type Leases = Record<string, { readonly token: string; readonly at: number }>;
 
 interface WorkspacesState {
-  readonly workspaces: readonly { readonly id: string; readonly name: string }[];
+  readonly workspaces: readonly WorkspaceSummary[];
   readonly activeId: string;
   /** Workspace ids open in another live window. */
   readonly busyIds: readonly string[];
@@ -153,7 +168,11 @@ function releaseLease(): void {
 
 function publish(stored: StoredWorkspaces, activeId: string): void {
   useWorkspacesStore.setState({
-    workspaces: stored.workspaces.map(({ id, name }) => ({ id, name })),
+    workspaces: stored.workspaces.map(({ id, name, layout }) => ({
+      id,
+      name,
+      tabs: layoutTabs(layout),
+    })),
     activeId,
     busyIds: busyIdsFor(token),
   });
@@ -171,10 +190,15 @@ function saveActiveLayout(): void {
   const activeId = useWorkspacesStore.getState().activeId;
   if (!activeId) return;
   const layout = snapshotPaneLayout();
+  const busy = new Set(busyIdsFor(token));
   updateStored((stored) => ({
     ...stored,
     workspaces: stored.workspaces.map((workspace) =>
-      workspace.id === activeId ? { ...workspace, layout } : workspace,
+      workspace.id === activeId
+        ? { ...workspace, layout }
+        : busy.has(workspace.id)
+          ? workspace
+          : { ...workspace, layout: withoutDraftTabs(workspace.layout, layout.draftTabKeys) },
     ),
   }));
 }
@@ -318,4 +342,32 @@ export function deleteWorkspace(id: string): PaneLayout | null | false {
     mainActiveId: current.mainActiveId === id ? null : current.mainActiveId,
   }));
   return switched;
+}
+
+/** The workspace showing `threadRef` as a tab: this window's first, then any free one. */
+export function findWorkspaceForThread(threadRef: ScopedThreadRef): string | null {
+  const key = scopedThreadKey(threadRef);
+  const { workspaces, activeId, busyIds } = useWorkspacesStore.getState();
+  const holds = (workspace: WorkspaceSummary) =>
+    workspace.tabs.some((tab) => scopedThreadKey(tab) === key);
+  const active = workspaces.find((workspace) => workspace.id === activeId);
+  if (active && holds(active)) return active.id;
+  return (
+    workspaces.find((workspace) => !busyIds.includes(workspace.id) && holds(workspace))?.id ?? null
+  );
+}
+
+/**
+ * Switches to `workspaceId` (if needed) and brings `threadRef`'s tab to the front of
+ * its pane. Returns false when the workspace is open in another window.
+ */
+export function revealWorkspaceTab(workspaceId: string, threadRef: ScopedThreadRef): boolean {
+  if (workspaceId !== useWorkspacesStore.getState().activeId) {
+    if (switchWorkspace(workspaceId) === null) return false;
+  }
+  const panes = useChatPanesStore.getState();
+  const key = scopedThreadKey(threadRef);
+  const leaf = panes.root ? findLeafByThreadKey(panes.root, key) : null;
+  if (leaf) panes.activateTab(leaf.id, key);
+  return true;
 }
