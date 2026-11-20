@@ -265,6 +265,7 @@ import { SidebarProjectGroupRow } from "../fork/SidebarProjectGroupRows";
 import { isSidebarProjectDropAllowed } from "../fork/sidebarProjectGroups.logic";
 import { isSidebarProjectListItem } from "../fork/sidebarProjectItems";
 import { useSidebarProjectGrouping } from "../fork/useSidebarProjectGrouping";
+import { WorkspaceSwitcher } from "../fork/WorkspaceSwitcher";
 import {
   composerDraftHasUserContent,
   DraftId,
@@ -3093,6 +3094,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   return (
     <SidebarFolderDrop>
       <SidebarChromeHeader isElectron={isElectron} />
+      <WorkspaceSwitcher />
       <SidebarContent
         ref={sidebarContentRef}
         className="min-h-full"
