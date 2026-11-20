@@ -2,7 +2,6 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 
 import {
   activateTab,
@@ -26,14 +25,13 @@ import {
   type ChatPaneNode,
   type PaneEdge,
 } from "./chatPanes.logic";
-import { resolveStorage } from "../lib/storage";
-import { chatPanesBackingStorage } from "./windowPaneStorage";
 import { randomUUID } from "../lib/utils";
 
 /**
  * Window chat layout: a tree of tab-group panes; null is the plain upstream view.
  * The route is the source of truth for the focused pane's active tab. A
- * single-pane layout is kept (tabs without splits).
+ * single-pane layout is kept (tabs without splits). The layout belongs to the
+ * window's active workspace, which saves and restores it (workspacesStore.ts).
  */
 
 /** Pane id used for the pane created when the first thread opens. */
@@ -65,7 +63,7 @@ const PersistedSchema = Schema.Struct({
 });
 const decodePersisted = Schema.decodeUnknownSync(PersistedSchema);
 
-const STORAGE_VERSION = 2;
+export const PANE_LAYOUT_VERSION = 2;
 
 /** v1 leaves held one `threadRef`; v2 leaves hold tabs. */
 function migrateNode(node: unknown): unknown {
@@ -87,11 +85,48 @@ function migrateNode(node: unknown): unknown {
 }
 
 function migratePersisted(persisted: unknown, version: number): unknown {
-  if (version >= STORAGE_VERSION || typeof persisted !== "object" || persisted === null) {
+  if (version >= PANE_LAYOUT_VERSION || typeof persisted !== "object" || persisted === null) {
     return persisted;
   }
   const record = persisted as Record<string, unknown>;
   return { ...record, root: migrateNode(record.root), history: [] };
+}
+
+export interface PaneLayout {
+  readonly root: ChatPaneNode | null;
+  readonly focusedPaneId: ChatPaneId | null;
+  readonly history: readonly string[];
+  readonly draftTabKeys: readonly string[];
+}
+
+export const EMPTY_PANE_LAYOUT: PaneLayout = {
+  root: null,
+  focusedPaneId: null,
+  history: [],
+  draftTabKeys: [],
+};
+
+/** Decodes a stored layout (older versions migrate); null when it is unusable. */
+export function decodePaneLayout(raw: unknown, version: number): PaneLayout | null {
+  try {
+    const { root, focusedPaneId, history, draftTabKeys } = decodePersisted(
+      migratePersisted(raw, version),
+    );
+    const focused =
+      root && focusedPaneId && findLeaf(root, focusedPaneId)
+        ? focusedPaneId
+        : root
+          ? collectLeaves(root)[0]!.id
+          : null;
+    return { root, focusedPaneId: focused, history, draftTabKeys: draftTabKeys ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+export function snapshotPaneLayout(): PaneLayout {
+  const { root, focusedPaneId, history, draftTabKeys } = useChatPanesStore.getState();
+  return { root, focusedPaneId, history, draftTabKeys };
 }
 
 interface ChatPanesState {
@@ -158,6 +193,8 @@ interface ChatPanesState {
   closePane: (paneId: ChatPaneId) => ScopedThreadRef | null;
   setRatio: (splitId: ChatPaneId, ratio: number) => void;
   reset: () => void;
+  /** Replaces the whole layout (workspace switch). */
+  loadLayout: (layout: PaneLayout) => void;
 }
 
 function sameThread(a: ScopedThreadRef | null, b: ScopedThreadRef | null): boolean {
@@ -173,239 +210,202 @@ function pickFocusedLeaf(root: ChatPaneNode, focusedPaneId: ChatPaneId | null) {
   return (focusedPaneId && findLeaf(root, focusedPaneId)) || collectLeaves(root)[0]!;
 }
 
-export const useChatPanesStore = create<ChatPanesState>()(
-  persist(
-    (set, get) => ({
-      root: null,
-      focusedPaneId: null,
-      history: [],
-      draftTabKeys: [],
-      untrackDraftTabs: (threadKeys) =>
-        set((state) => {
-          const drop = new Set(threadKeys);
-          if (!state.draftTabKeys.some((key) => drop.has(key))) return state;
-          return { draftTabKeys: state.draftTabKeys.filter((key) => !drop.has(key)) };
-        }),
-      syncRouteThread: (threadRef, options) =>
-        set((state) => {
-          const key = scopedThreadKey(threadRef);
-          const draftTabKeys =
-            options?.draft && !state.draftTabKeys.includes(key)
-              ? [...state.draftTabKeys, key]
-              : state.draftTabKeys;
-          if (!state.root) {
-            return {
-              root: createLeaf(SEED_PANE_ID, [threadRef], key),
-              focusedPaneId: SEED_PANE_ID,
-              history: visit(state.history, key),
-              draftTabKeys,
-            };
-          }
-          const existing = findLeafByThreadKey(state.root, key);
-          const target = existing ?? pickFocusedLeaf(state.root, state.focusedPaneId);
-          const root = existing
-            ? activateTab(state.root, existing.id, key)
-            : insertTab(state.root, target.id, threadRef);
-          const history = visit(state.history, key);
-          if (
-            root === state.root &&
-            state.focusedPaneId === target.id &&
-            history === state.history &&
-            draftTabKeys === state.draftTabKeys
-          ) {
-            return state;
-          }
-          return { root, focusedPaneId: target.id, history, draftTabKeys };
-        }),
-      focusPane: (paneId) =>
-        set((state) =>
-          state.focusedPaneId === paneId || !state.root || !findLeaf(state.root, paneId)
-            ? state
-            : { focusedPaneId: paneId },
-        ),
-      activateTab: (paneId, threadKey) =>
-        set((state) => {
-          if (!state.root) return state;
-          const root = activateTab(state.root, paneId, threadKey);
-          return { root, focusedPaneId: paneId, history: visit(state.history, threadKey) };
-        }),
-      split: ({ targetId, anchorThreadRef, edge, threadRef }) => {
-        const state = get();
-        let root = state.root;
-        let target = targetId;
-        if (!root) {
-          if (!anchorThreadRef) return null;
-          root = createLeaf(SEED_PANE_ID, [anchorThreadRef]);
-          target = SEED_PANE_ID;
-        }
-        if (!target || !findLeaf(root, target)) {
-          target = state.focusedPaneId ?? collectLeaves(root)[0]!.id;
-        }
-        let history = state.history;
-        const newId = randomUUID();
-        if (threadRef) {
-          const key = scopedThreadKey(threadRef);
-          const source = findLeafByThreadKey(root, key);
-          if (source) {
-            // A thread is one tab at most: splitting with an open one moves it.
-            const moved = moveTabToEdge(root, key, target, edge, history, newId, randomUUID());
-            if (moved === root) return source.id;
-            set({ root: moved, focusedPaneId: newId, history: visit(history, key) });
-            return newId;
-          }
-          history = visit(history, key);
-        }
-        const leaf = createLeaf(newId, threadRef ? [threadRef] : []);
-        const next = splitPane(root, target, edge, leaf, randomUUID());
-        set({ root: next, focusedPaneId: newId, history });
-        return newId;
-      },
-      setPaneThread: (paneId, threadRef) =>
-        set((state) => {
-          if (!state.root || !findLeaf(state.root, paneId)) return state;
-          const key = scopedThreadKey(threadRef);
-          const root = findLeafByThreadKey(state.root, key)
-            ? moveTabToPane(state.root, key, paneId, undefined, state.history)
-            : insertTab(state.root, paneId, threadRef);
-          return { root, focusedPaneId: paneId, history: visit(state.history, key) };
-        }),
-      closeTabs: (threadKeys, keepKey) => {
-        const state = get();
-        if (!state.root) return null;
-        let root: ChatPaneNode = state.root;
-        let history = state.history;
-        for (const key of threadKeys) {
-          root = closeTab(root, key, history);
-          history = history.filter((entry) => entry !== key);
-        }
-        if (root === state.root) return null;
-        const keepLeaf = keepKey ? findLeafByThreadKey(root, keepKey) : null;
-        if (keepLeaf && keepKey) root = activateTab(root, keepLeaf.id, keepKey);
-        const previousFocus = state.focusedPaneId;
-        let focusedId: ChatPaneId | null = previousFocus;
-        if (!focusedId || !findLeaf(root, focusedId)) {
-          const sibling = previousFocus ? findSiblingLeaf(state.root, previousFocus) : null;
-          focusedId =
-            sibling && findLeaf(root, sibling.id) ? sibling.id : collectLeaves(root)[0]!.id;
-        }
-        const before = previousFocus ? findLeaf(state.root, previousFocus) : null;
-        const after = findLeaf(root, focusedId)!;
-        set({ root, focusedPaneId: focusedId, history });
-        const next = leafActiveThread(after);
-        const routeUnchanged =
-          focusedId === previousFocus &&
-          (before ? sameThread(leafActiveThread(before), next) : true);
-        return routeUnchanged ? null : next;
-      },
-      dropTab: (threadKey, targetId, placement) => {
-        const state = get();
-        if (!state.root) return null;
-        const root =
-          "edge" in placement
-            ? moveTabToEdge(
-                state.root,
-                threadKey,
-                targetId,
-                placement.edge,
-                state.history,
-                randomUUID(),
-                randomUUID(),
-              )
-            : moveTabToPane(state.root, threadKey, targetId, placement.index, state.history);
-        const leaf = findLeafByThreadKey(root, threadKey);
-        if (!leaf) return null;
-        if (root === state.root) return null;
-        set({
-          root: activateTab(root, leaf.id, threadKey),
-          focusedPaneId: leaf.id,
-          history: visit(state.history, threadKey),
-        });
-        return leaf.tabs.find((tab) => scopedThreadKey(tab) === threadKey) ?? null;
-      },
-      returnToParent: (childRef, parentRef) =>
-        set((state) => {
-          if (!state.root) return state;
-          const childKey = scopedThreadKey(childRef);
-          const parentKey = scopedThreadKey(parentRef);
-          const root = returnToParentTab(state.root, childKey, parentRef, state.history);
-          if (root === state.root) return state;
-          const leaf = findLeafByThreadKey(root, parentKey);
-          const history = state.history.filter((entry) => entry !== childKey);
-          return {
-            root,
-            focusedPaneId: leaf?.id ?? pickFocusedLeaf(root, state.focusedPaneId).id,
-            history: visit(history, parentKey),
-          };
-        }),
-      touch: (threadKey) =>
-        set((state) => {
-          const history = touchHistory(state.history, threadKey);
-          return history === state.history ? state : { history };
-        }),
-      closePane: (paneId) => {
-        const state = get();
-        if (!state.root) return null;
-        const closing = findLeaf(state.root, paneId);
-        if (!closing) return null;
-        const closingKeys = new Set(closing.tabs.map((tab) => scopedThreadKey(tab)));
-        const history = state.history.filter((key) => !closingKeys.has(key));
-        if (state.root.kind === "leaf") {
-          set({ root: createLeaf(closing.id), focusedPaneId: closing.id, history });
-          return null;
-        }
-        const sibling = findSiblingLeaf(state.root, paneId);
-        const remaining = removePane(state.root, paneId);
-        if (!remaining) return null;
-        const wasFocused = state.focusedPaneId === paneId;
-        const nextFocusId = wasFocused
-          ? (sibling?.id ?? collectLeaves(remaining)[0]!.id)
-          : state.focusedPaneId;
-        const nextFocus = nextFocusId ? findLeaf(remaining, nextFocusId) : null;
-        set({ root: remaining, focusedPaneId: nextFocus?.id ?? null, history });
-        return wasFocused && nextFocus ? leafActiveThread(nextFocus) : null;
-      },
-      setRatio: (splitId, ratio) =>
-        set((state) => {
-          if (!state.root) return state;
-          const root = setPaneRatio(state.root, splitId, clampPaneRatio(ratio));
-          return root === state.root ? state : { root };
-        }),
-      reset: () => set({ root: null, focusedPaneId: null, history: [], draftTabKeys: [] }),
+export const useChatPanesStore = create<ChatPanesState>()((set, get) => ({
+  root: null,
+  focusedPaneId: null,
+  history: [],
+  draftTabKeys: [],
+  untrackDraftTabs: (threadKeys) =>
+    set((state) => {
+      const drop = new Set(threadKeys);
+      if (!state.draftTabKeys.some((key) => drop.has(key))) return state;
+      return { draftTabKeys: state.draftTabKeys.filter((key) => !drop.has(key)) };
     }),
-    {
-      name: "t3code:fork-chat-panes:v1",
-      version: STORAGE_VERSION,
-      migrate: migratePersisted,
-      storage: createJSONStorage(() => resolveStorage(chatPanesBackingStorage())),
-      partialize: (state) => ({
-        root: state.root,
-        focusedPaneId: state.focusedPaneId,
-        history: state.history,
-        draftTabKeys: state.draftTabKeys,
-      }),
-      merge: (persisted, current) => {
-        try {
-          const { root, focusedPaneId, history, draftTabKeys } = decodePersisted(persisted);
-          const focused =
-            root && focusedPaneId && findLeaf(root, focusedPaneId)
-              ? focusedPaneId
-              : root
-                ? collectLeaves(root)[0]!.id
-                : null;
-          return {
-            ...current,
-            root,
-            focusedPaneId: focused,
-            history,
-            draftTabKeys: draftTabKeys ?? [],
-          };
-        } catch {
-          return current;
-        }
-      },
-    },
-  ),
-);
+  syncRouteThread: (threadRef, options) =>
+    set((state) => {
+      const key = scopedThreadKey(threadRef);
+      const draftTabKeys =
+        options?.draft && !state.draftTabKeys.includes(key)
+          ? [...state.draftTabKeys, key]
+          : state.draftTabKeys;
+      if (!state.root) {
+        return {
+          root: createLeaf(SEED_PANE_ID, [threadRef], key),
+          focusedPaneId: SEED_PANE_ID,
+          history: visit(state.history, key),
+          draftTabKeys,
+        };
+      }
+      const existing = findLeafByThreadKey(state.root, key);
+      const target = existing ?? pickFocusedLeaf(state.root, state.focusedPaneId);
+      const root = existing
+        ? activateTab(state.root, existing.id, key)
+        : insertTab(state.root, target.id, threadRef);
+      const history = visit(state.history, key);
+      if (
+        root === state.root &&
+        state.focusedPaneId === target.id &&
+        history === state.history &&
+        draftTabKeys === state.draftTabKeys
+      ) {
+        return state;
+      }
+      return { root, focusedPaneId: target.id, history, draftTabKeys };
+    }),
+  focusPane: (paneId) =>
+    set((state) =>
+      state.focusedPaneId === paneId || !state.root || !findLeaf(state.root, paneId)
+        ? state
+        : { focusedPaneId: paneId },
+    ),
+  activateTab: (paneId, threadKey) =>
+    set((state) => {
+      if (!state.root) return state;
+      const root = activateTab(state.root, paneId, threadKey);
+      return { root, focusedPaneId: paneId, history: visit(state.history, threadKey) };
+    }),
+  split: ({ targetId, anchorThreadRef, edge, threadRef }) => {
+    const state = get();
+    let root = state.root;
+    let target = targetId;
+    if (!root) {
+      if (!anchorThreadRef) return null;
+      root = createLeaf(SEED_PANE_ID, [anchorThreadRef]);
+      target = SEED_PANE_ID;
+    }
+    if (!target || !findLeaf(root, target)) {
+      target = state.focusedPaneId ?? collectLeaves(root)[0]!.id;
+    }
+    let history = state.history;
+    const newId = randomUUID();
+    if (threadRef) {
+      const key = scopedThreadKey(threadRef);
+      const source = findLeafByThreadKey(root, key);
+      if (source) {
+        // A thread is one tab at most: splitting with an open one moves it.
+        const moved = moveTabToEdge(root, key, target, edge, history, newId, randomUUID());
+        if (moved === root) return source.id;
+        set({ root: moved, focusedPaneId: newId, history: visit(history, key) });
+        return newId;
+      }
+      history = visit(history, key);
+    }
+    const leaf = createLeaf(newId, threadRef ? [threadRef] : []);
+    const next = splitPane(root, target, edge, leaf, randomUUID());
+    set({ root: next, focusedPaneId: newId, history });
+    return newId;
+  },
+  setPaneThread: (paneId, threadRef) =>
+    set((state) => {
+      if (!state.root || !findLeaf(state.root, paneId)) return state;
+      const key = scopedThreadKey(threadRef);
+      const root = findLeafByThreadKey(state.root, key)
+        ? moveTabToPane(state.root, key, paneId, undefined, state.history)
+        : insertTab(state.root, paneId, threadRef);
+      return { root, focusedPaneId: paneId, history: visit(state.history, key) };
+    }),
+  closeTabs: (threadKeys, keepKey) => {
+    const state = get();
+    if (!state.root) return null;
+    let root: ChatPaneNode = state.root;
+    let history = state.history;
+    for (const key of threadKeys) {
+      root = closeTab(root, key, history);
+      history = history.filter((entry) => entry !== key);
+    }
+    if (root === state.root) return null;
+    const keepLeaf = keepKey ? findLeafByThreadKey(root, keepKey) : null;
+    if (keepLeaf && keepKey) root = activateTab(root, keepLeaf.id, keepKey);
+    const previousFocus = state.focusedPaneId;
+    let focusedId: ChatPaneId | null = previousFocus;
+    if (!focusedId || !findLeaf(root, focusedId)) {
+      const sibling = previousFocus ? findSiblingLeaf(state.root, previousFocus) : null;
+      focusedId = sibling && findLeaf(root, sibling.id) ? sibling.id : collectLeaves(root)[0]!.id;
+    }
+    const before = previousFocus ? findLeaf(state.root, previousFocus) : null;
+    const after = findLeaf(root, focusedId)!;
+    set({ root, focusedPaneId: focusedId, history });
+    const next = leafActiveThread(after);
+    const routeUnchanged =
+      focusedId === previousFocus && (before ? sameThread(leafActiveThread(before), next) : true);
+    return routeUnchanged ? null : next;
+  },
+  dropTab: (threadKey, targetId, placement) => {
+    const state = get();
+    if (!state.root) return null;
+    const root =
+      "edge" in placement
+        ? moveTabToEdge(
+            state.root,
+            threadKey,
+            targetId,
+            placement.edge,
+            state.history,
+            randomUUID(),
+            randomUUID(),
+          )
+        : moveTabToPane(state.root, threadKey, targetId, placement.index, state.history);
+    const leaf = findLeafByThreadKey(root, threadKey);
+    if (!leaf) return null;
+    if (root === state.root) return null;
+    set({
+      root: activateTab(root, leaf.id, threadKey),
+      focusedPaneId: leaf.id,
+      history: visit(state.history, threadKey),
+    });
+    return leaf.tabs.find((tab) => scopedThreadKey(tab) === threadKey) ?? null;
+  },
+  returnToParent: (childRef, parentRef) =>
+    set((state) => {
+      if (!state.root) return state;
+      const childKey = scopedThreadKey(childRef);
+      const parentKey = scopedThreadKey(parentRef);
+      const root = returnToParentTab(state.root, childKey, parentRef, state.history);
+      if (root === state.root) return state;
+      const leaf = findLeafByThreadKey(root, parentKey);
+      const history = state.history.filter((entry) => entry !== childKey);
+      return {
+        root,
+        focusedPaneId: leaf?.id ?? pickFocusedLeaf(root, state.focusedPaneId).id,
+        history: visit(history, parentKey),
+      };
+    }),
+  touch: (threadKey) =>
+    set((state) => {
+      const history = touchHistory(state.history, threadKey);
+      return history === state.history ? state : { history };
+    }),
+  closePane: (paneId) => {
+    const state = get();
+    if (!state.root) return null;
+    const closing = findLeaf(state.root, paneId);
+    if (!closing) return null;
+    const closingKeys = new Set(closing.tabs.map((tab) => scopedThreadKey(tab)));
+    const history = state.history.filter((key) => !closingKeys.has(key));
+    if (state.root.kind === "leaf") {
+      set({ root: createLeaf(closing.id), focusedPaneId: closing.id, history });
+      return null;
+    }
+    const sibling = findSiblingLeaf(state.root, paneId);
+    const remaining = removePane(state.root, paneId);
+    if (!remaining) return null;
+    const wasFocused = state.focusedPaneId === paneId;
+    const nextFocusId = wasFocused
+      ? (sibling?.id ?? collectLeaves(remaining)[0]!.id)
+      : state.focusedPaneId;
+    const nextFocus = nextFocusId ? findLeaf(remaining, nextFocusId) : null;
+    set({ root: remaining, focusedPaneId: nextFocus?.id ?? null, history });
+    return wasFocused && nextFocus ? leafActiveThread(nextFocus) : null;
+  },
+  setRatio: (splitId, ratio) =>
+    set((state) => {
+      if (!state.root) return state;
+      const root = setPaneRatio(state.root, splitId, clampPaneRatio(ratio));
+      return root === state.root ? state : { root };
+    }),
+  reset: () => set({ root: null, focusedPaneId: null, history: [], draftTabKeys: [] }),
+  loadLayout: (layout) => set({ ...layout }),
+}));
 
 /**
  * Opens `threadRef` (or an empty pane when null) beside the focused pane, or

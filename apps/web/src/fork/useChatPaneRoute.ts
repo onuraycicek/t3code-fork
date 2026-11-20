@@ -7,6 +7,8 @@ import type { ThreadRouteTarget } from "../threadRoutes";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { createLeaf, type ChatPaneNode } from "./chatPanes.logic";
 import { SEED_PANE_ID, openChatPaneSplit, useChatPanesStore } from "./chatPanesStore";
+// Loads the window's workspace layout before the first route sync.
+import "./workspacesStore";
 
 /**
  * Returns the pane layout root for the thread route, or null for the plain view.
