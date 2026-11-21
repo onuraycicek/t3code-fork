@@ -1,27 +1,63 @@
 /* oxlint-disable t3code/no-untranslated-copy -- fork UI is English-only; translating it would touch upstream locale catalogs every sync */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ProjectId,
+  ProjectIconOverride,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useMessages } from "gt-react";
-import { ChevronRightIcon, PencilIcon, PlusIcon, XIcon } from "lucide-react";
-import { useState } from "react";
+import {
+  BotIcon,
+  ChevronRightIcon,
+  ImageIcon,
+  PencilIcon,
+  PlusIcon,
+  TerminalIcon,
+  XIcon,
+} from "lucide-react";
+import { lazy, Suspense, useRef, useState } from "react";
 
 import { resolveThreadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
+import { ProjectFavicon, type ProjectFaviconProject } from "../components/ProjectFavicon";
 import { ProjectMonogram } from "../components/ProjectMonogram";
+import {
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "../components/ui/menu";
 import { CollapsibleSectionHeader } from "../components/ui/collapsible-section-header";
 import { cn } from "../lib/utils";
 import { deriveProjectIdentity } from "../projectIdentity";
-import { useThreadShells } from "../state/entities";
-import { classifyStatusPill, type TabActivity } from "./workspaces.logic";
+import { useProject, useProjects, useThreadShells } from "../state/entities";
+import { useThreadRunningTerminalIds } from "../state/terminalSessions";
+import { classifyStatusPill, isBackgroundWorkPill, type TabActivity } from "./workspaces.logic";
 import { navigateToLayout, openWorkspaceTab, type RouteNavigate } from "./workspaceNavigation";
 import {
   createWorkspace,
   deleteWorkspace,
   renameWorkspace,
+  setWorkspaceIcon,
   switchWorkspace,
   useWorkspacesStore,
+  type WorkspaceIcon,
   type WorkspaceSummary,
 } from "./workspacesStore";
+
+const ProjectIconPickerDialog = lazy(() =>
+  import("../components/settings/ProjectIconPickerDialog").then((module) => ({
+    default: module.ProjectIconPickerDialog,
+  })),
+);
+
+/** Uploaded pictures are cropped to a square this size and kept inline. */
+const ICON_IMAGE_SIZE = 64;
 
 const EXPANDED_KEY = "t3code:fork-workspaces-expanded";
 const OPEN_WORKSPACES_KEY = "t3code:fork-workspaces-open";
@@ -48,7 +84,18 @@ interface TabStatus {
   readonly title: string;
   readonly pill: ThreadStatusPill | null;
   readonly activity: TabActivity | null;
+  /** Subagents still running for the thread. */
+  readonly subagents: number;
+  /** Agent background commands and monitors still running. */
+  readonly commands: number;
 }
+
+const IDLE_TAB: Omit<TabStatus, "title"> = {
+  pill: null,
+  activity: null,
+  subagents: 0,
+  commands: 0,
+};
 
 const BADGE_ORDER: readonly TabActivity[] = ["wait", "error", "run", "done"];
 const BADGE_CLASS: Record<TabActivity, string> = {
@@ -79,15 +126,18 @@ export function WorkspaceSwitcher() {
   const statusByKey = new Map<string, TabStatus>();
   for (const shell of shells) {
     const pill = resolveThreadStatusPill({ thread: shell });
+    const tasks = shell.pendingBackgroundTasks ?? [];
     statusByKey.set(scopedThreadKey({ environmentId: shell.environmentId, threadId: shell.id }), {
       title: shell.title,
       pill,
       activity: classifyStatusPill(pill),
+      subagents: tasks.filter((task) => task.kind === "subagent").length,
+      commands: tasks.filter((task) => task.kind === "command" || task.kind === "monitor").length,
     });
   }
 
   const statusOf = (tab: ScopedThreadRef): TabStatus =>
-    statusByKey.get(scopedThreadKey(tab)) ?? { title: "New thread", pill: null, activity: null };
+    statusByKey.get(scopedThreadKey(tab)) ?? { title: "New thread", ...IDLE_TAB };
 
   const toggle = () => {
     const next = !expanded;
@@ -149,6 +199,7 @@ export function WorkspaceSwitcher() {
                 setRenamingId(null);
               }}
               onDelete={() => navigateToLayout(deleteWorkspace(workspace.id), navigate)}
+              onSetIcon={(icon) => setWorkspaceIcon(workspace.id, icon)}
             />
           ))}
         </ul>
@@ -171,8 +222,11 @@ function WorkspaceRow(props: {
   onStartRename: () => void;
   onFinishRename: (name: string | null) => void;
   onDelete: () => void;
+  onSetIcon: (icon: WorkspaceIcon | null) => void;
 }) {
   const { workspace, active, busy } = props;
+  const [iconMenuOpen, setIconMenuOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const statuses = workspace.tabs.map((tab) => ({ tab, status: props.statusOf(tab) }));
   const counts = new Map<TabActivity, number>();
   for (const { status } of statuses) {
@@ -234,7 +288,7 @@ function WorkspaceRow(props: {
           onClick={props.onSwitch}
           onDoubleClick={props.onStartRename}
         >
-          <WorkspaceMonogram name={workspace.name} />
+          <WorkspaceIconView name={workspace.name} icon={workspace.icon} />
           <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
           {busy ? (
             <span className="shrink-0 text-2xs font-normal text-sidebar-muted-foreground">
@@ -257,7 +311,20 @@ function WorkspaceRow(props: {
           </span>
         </button>
         {busy ? null : (
-          <div className="absolute inset-y-0 right-1 hidden items-center gap-0.5 group-hover/workspace:flex">
+          <div
+            className={cn(
+              "absolute inset-y-0 right-1 items-center gap-0.5 group-hover/workspace:flex",
+              iconMenuOpen ? "flex" : "hidden",
+            )}
+          >
+            <WorkspaceIconMenu
+              name={workspace.name}
+              hasIcon={workspace.icon !== undefined}
+              open={iconMenuOpen}
+              onOpenChange={setIconMenuOpen}
+              onChooseIcon={() => setPickerOpen(true)}
+              onSetIcon={props.onSetIcon}
+            />
             <button
               type="button"
               className="flex size-5 items-center justify-center rounded text-sidebar-muted-foreground hover:bg-sidebar-border/60 hover:text-sidebar-foreground"
@@ -287,6 +354,7 @@ function WorkspaceRow(props: {
           {statuses.map(({ tab, status }) => (
             <WorkspaceTabRow
               key={scopedThreadKey(tab)}
+              tab={tab}
               status={status}
               disabled={busy}
               onOpen={() => props.onOpenTab(tab)}
@@ -294,13 +362,35 @@ function WorkspaceRow(props: {
           ))}
         </ul>
       ) : null}
+      {pickerOpen ? (
+        <Suspense fallback={null}>
+          <ProjectIconPickerDialog
+            current={workspace.icon?.kind === "override" ? workspace.icon.icon : null}
+            projectName={workspace.name}
+            open
+            onOpenChange={setPickerOpen}
+            onSelect={(icon: ProjectIconOverride) => props.onSetIcon({ kind: "override", icon })}
+          />
+        </Suspense>
+      ) : null}
     </li>
   );
 }
 
-function WorkspaceTabRow(props: { status: TabStatus; disabled: boolean; onOpen: () => void }) {
+function WorkspaceTabRow(props: {
+  tab: ScopedThreadRef;
+  status: TabStatus;
+  disabled: boolean;
+  onOpen: () => void;
+}) {
   const m = useMessages();
-  const { title, pill, activity } = props.status;
+  const { title, pill, activity, subagents, commands } = props.status;
+  const terminals = useThreadRunningTerminalIds({
+    environmentId: props.tab.environmentId,
+    threadId: props.tab.threadId,
+  }).length;
+  // Only states that need you get words; work in progress shows as icon counts.
+  const showLabel = pill !== null && (activity === "wait" || activity === "error");
   return (
     <li>
       <button
@@ -319,11 +409,13 @@ function WorkspaceTabRow(props: { status: TabStatus; disabled: boolean; onOpen: 
       >
         <TabActivityIcon pill={pill} activity={activity} />
         <span className="min-w-0 flex-1 truncate">{title}</span>
-        {pill && activity ? (
+        {showLabel && pill ? (
           <span className={cn("shrink-0 text-2xs font-normal", pill.colorClass)}>
             {m(pill.label)}
           </span>
         ) : null}
+        <TabWorkCount icon={BotIcon} count={subagents} label="subagents running" />
+        <TabWorkCount icon={TerminalIcon} count={commands + terminals} label="commands running" />
       </button>
     </li>
   );
@@ -331,10 +423,16 @@ function WorkspaceTabRow(props: { status: TabStatus; disabled: boolean; onOpen: 
 
 function TabActivityIcon(props: { pill: ThreadStatusPill | null; activity: TabActivity | null }) {
   if (props.activity === "run") {
+    // A finished turn waiting on subagents or background work spins dotted.
     return (
       <span
         aria-hidden
-        className="size-2.5 shrink-0 animate-spin rounded-full border-2 border-info/30 border-t-info"
+        className={cn(
+          "size-2.5 shrink-0 animate-spin rounded-full border-2",
+          isBackgroundWorkPill(props.pill)
+            ? "border-dotted border-info/70"
+            : "border-info/30 border-t-info",
+        )}
       />
     );
   }
@@ -351,8 +449,166 @@ function TabActivityIcon(props: { pill: ThreadStatusPill | null; activity: TabAc
   );
 }
 
-/** Same coloured monogram projects get, derived from the workspace name. */
-function WorkspaceMonogram(props: { name: string }) {
+function TabWorkCount(props: { icon: typeof BotIcon; count: number; label: string }) {
+  if (props.count === 0) return null;
+  const Icon = props.icon;
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-0.5 text-2xs font-normal text-sidebar-muted-foreground tabular-nums"
+      aria-label={`${props.count} ${props.label}`}
+    >
+      <Icon className="size-3" aria-hidden />
+      {props.count}
+    </span>
+  );
+}
+
+/** The workspace's picture, else the coloured monogram projects get, from its name. */
+function WorkspaceIconView(props: { name: string; icon: WorkspaceIcon | undefined }) {
+  const { icon } = props;
+  if (icon?.kind === "image") {
+    return (
+      <img
+        src={icon.dataUrl}
+        alt=""
+        aria-hidden
+        className="size-4 shrink-0 rounded-[25%] object-cover"
+      />
+    );
+  }
+  if (icon?.kind === "override") {
+    return <ProjectFavicon project={iconOnlyProject(props.name, icon.icon)} />;
+  }
+  if (icon?.kind === "project") {
+    return (
+      <LinkedProjectIcon
+        name={props.name}
+        environmentId={icon.environmentId}
+        projectId={icon.projectId}
+      />
+    );
+  }
   const identity = deriveProjectIdentity(props.name);
   return <ProjectMonogram text={identity.monogram} color={identity.color} />;
+}
+
+function LinkedProjectIcon(props: { name: string; environmentId: string; projectId: string }) {
+  const project = useProject({
+    environmentId: props.environmentId as EnvironmentId,
+    projectId: props.projectId as ProjectId,
+  });
+  if (project) return <ProjectFavicon project={project} />;
+  const identity = deriveProjectIdentity(props.name);
+  return <ProjectMonogram text={identity.monogram} color={identity.color} />;
+}
+
+/** ProjectFavicon renders an override from `projectIcon` alone; the rest is filler. */
+function iconOnlyProject(name: string, icon: ProjectIconOverride): ProjectFaviconProject {
+  return {
+    environmentId: "" as EnvironmentId,
+    workspaceRoot: "",
+    title: name,
+    faviconPath: null,
+    projectIcon: icon,
+  } as ProjectFaviconProject;
+}
+
+/** Reads an image file and crops it to a centred square data URL. */
+async function imageFileToIconDataUrl(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement("canvas");
+  canvas.width = ICON_IMAGE_SIZE;
+  canvas.height = ICON_IMAGE_SIZE;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Canvas 2D context unavailable");
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    bitmap,
+    (bitmap.width - side) / 2,
+    (bitmap.height - side) / 2,
+    side,
+    side,
+    0,
+    0,
+    ICON_IMAGE_SIZE,
+    ICON_IMAGE_SIZE,
+  );
+  bitmap.close();
+  return canvas.toDataURL("image/png");
+}
+
+function WorkspaceIconMenu(props: {
+  name: string;
+  hasIcon: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChooseIcon: () => void;
+  onSetIcon: (icon: WorkspaceIcon | null) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const projects = useProjects();
+  return (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (!file) return;
+          void imageFileToIconDataUrl(file)
+            .then((dataUrl) => props.onSetIcon({ kind: "image", dataUrl }))
+            .catch((error: unknown) => console.error("Could not read the image.", error));
+        }}
+      />
+      <Menu open={props.open} onOpenChange={props.onOpenChange}>
+        <MenuTrigger
+          render={
+            <button
+              type="button"
+              className="flex size-5 items-center justify-center rounded text-sidebar-muted-foreground hover:bg-sidebar-border/60 hover:text-sidebar-foreground"
+            />
+          }
+          aria-label={`Change icon of ${props.name}`}
+        >
+          <ImageIcon className="size-3" />
+        </MenuTrigger>
+        <MenuPopup align="end" className="min-w-48">
+          <MenuItem onClick={props.onChooseIcon}>Choose icon…</MenuItem>
+          <MenuItem onClick={() => fileInputRef.current?.click()}>Choose file…</MenuItem>
+          {projects.length > 0 ? (
+            <MenuSub>
+              <MenuSubTrigger>Use a project's icon</MenuSubTrigger>
+              <MenuSubPopup className="max-h-80 min-w-52 overflow-y-auto">
+                {projects.map((project) => (
+                  <MenuItem
+                    key={`${project.environmentId}:${project.id}`}
+                    onClick={() =>
+                      props.onSetIcon({
+                        kind: "project",
+                        environmentId: project.environmentId,
+                        projectId: project.id,
+                      })
+                    }
+                  >
+                    <ProjectFavicon project={project} />
+                    <span className="min-w-0 truncate">{project.title}</span>
+                  </MenuItem>
+                ))}
+              </MenuSubPopup>
+            </MenuSub>
+          ) : null}
+          {props.hasIcon ? (
+            <>
+              <MenuSeparator />
+              <MenuItem onClick={() => props.onSetIcon(null)}>Use name monogram</MenuItem>
+            </>
+          ) : null}
+        </MenuPopup>
+      </Menu>
+    </>
+  );
 }
