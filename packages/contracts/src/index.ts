@@ -15,6 +15,7 @@ export * from "./remoteAccess.ts";
 export * from "./ipc.ts";
 export * from "./terminal.ts";
 export * from "./fork/terminalMove.ts"; // fork
+export * from "./fork/workspaces.ts"; // fork
 export * from "./provider.ts";
 export * from "./providerInstance.ts";
 export * from "./providerSetup.ts";

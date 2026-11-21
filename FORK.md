@@ -51,29 +51,32 @@ Two features on top of upstream T3 Code:
   (base 055b44919e). Each window works in its own workspace (below). When
   upstream merges #37819, drop the carried diff.
 
-- **Workspaces.** A workspace is a named tab/split layout (a working setup, e.g.
-  one per app). A collapsible "Workspaces" list sits at the top of the
-  sidebar: click a row to switch, "+" adds one (and starts renaming it), hover a
-  row for rename/delete, double-click renames. There is always at least
-  one ("Default" on first run, which takes over the layout from before
-  workspaces); the sidebar still lists every thread, and whatever is opened or
-  arranged goes into the selected workspace. Switching saves the current layout,
-  loads the other one and moves the route to its focused tab. Workspaces live in
-  localStorage (`t3code:fork-workspaces:v1`) and survive restarts; the main
-  window reopens its last workspace. A workspace is open in one window at most
-  (heartbeat lease in `t3code:fork-workspace-leases:v1`); a new window takes the
-  first free one or creates "Workspace N", and busy ones show "Other window".
-  Writes re-read storage and touch only this window's workspace, so windows do
-  not overwrite each other.
-  Activity: every row sums its tabs' status (same pill as the tab strip, bucketed
-  as waiting / failed / working / completed-unseen); every workspace expands to
-  list their tabs in layout order (never re-sorted by status), and clicking one
-  switches there and brings that tab forward. An unsent draft belongs to one
-  workspace (opening it elsewhere moves it), because upstream keeps one draft per
-  project. Notifications read "Workspace · Thread" and open the thread in the
-  workspace that has its tab (`fork/workspaceNavigation.ts`). Code: `fork/workspacesStore.ts`,
-  `fork/workspaces.logic.ts`, `fork/WorkspaceSwitcher.tsx`; `chatPanesStore.ts`
-  no longer persists itself (`loadLayout` / `snapshotPaneLayout`).
+- **Workspaces.** A workspace is a working setup: its own threads and its own tab/split
+  layout. The list sits at the top of the sidebar (click to switch, "+" adds, hover for
+  rename/delete and the icon menu, double-click renames, drag to reorder); each row shows
+  its open tabs and badges for what its threads are doing. The sidebar thread list below
+  shows only the active workspace's threads plus whatever is open as a tab in it.
+  - **Where things live.** The registry (ids, names, icons, order, default) is on the
+    primary environment's server: `<T3 home>/userdata/fork-workspaces.json`, written
+    atomically, streamed to clients (`fork.workspaces.subscribe`) and changed with an
+    expected revision (`fork.workspaces.update`; a stale revision is refused and the
+    client re-applies its edit). Membership is the server-side thread tag
+    `workspace:<id>` (upstream `thread.tag.set`), so it syncs to every client. Layouts,
+    each window's workspace and a registry cache stay in localStorage.
+  - **Rules.** A thread started in a workspace is tagged with it once it exists on the
+    server (pending tags survive reloads). A subagent follows its root thread. A thread
+    with no known workspace tag (untagged, or its workspace was deleted) belongs to the
+    default workspace ("Make default workspace" in the icon menu), so no thread is ever
+    hidden for good. Until the registry arrives nothing is filtered. Deleting a workspace
+    removes its tags. "Move to workspace" in the thread menu adds the new tag before
+    removing old ones. On first run the local workspaces are uploaded with their ids.
+  - A workspace is open in one window at most (heartbeat lease), and an unsent draft
+    belongs to one workspace (upstream keeps one draft per project).
+  - Code: server `apps/server/src/fork/workspaceRegistry.ts`, contracts
+    `packages/contracts/src/fork/workspaces.ts`, web `fork/workspacesStore.ts`,
+    `fork/workspaces.logic.ts` (membership rules, tested), `fork/WorkspaceServerSync.tsx`,
+    `fork/workspaceServer.ts`, `fork/useForkWorkspaceThreads.ts`,
+    `fork/WorkspaceSwitcher.tsx`, `fork/workspaceNavigation.ts`.
 
 ## Where the code lives (keep it this way: fewer rebase conflicts)
 
@@ -90,7 +93,13 @@ files only carry small hook-up edits:
   subagent's tab back to its parent.
 - `DiffPanel.tsx`: reads the pane's thread from `useChatPane()`.
 - `ThreadRouteView.tsx`: `useChatPaneRoute()` + render `<ChatPanes>`; a sent draft's redirect is also followed while the panes render.
-- `Sidebar.tsx`: `<WorkspaceSwitcher />` under the chrome header.
+- `Sidebar.tsx`: `<WorkspaceSwitcher />` under the chrome header; `useForkWorkspaceThreads`
+  around the thread list; `forkWorkspaceMenuState` and the `fork-workspace:` branch in the
+  thread menu. `threadActionMenu.logic.ts`: the "Move to workspace" submenu.
+- Workspaces RPC: `contracts/src/rpc.ts` (two methods, two Rpcs, group entries),
+  `contracts/src/index.ts`, `server/src/ws.ts` (handlers), `auth/RpcAuthorization.ts`,
+  `observability/RpcInstrumentation.ts`, `server.ts` (layer), `ws.test.ts` (mock layer),
+  `client-runtime/src/rpc/client.ts` (subscription tag).
 - `ThreadNotificationCoordinator.tsx`: notification text via `workspaceNotificationLabel`, clicks via `openNotifiedThread`.
 - `Sidebar.tsx`, `Sidebar.logic.ts`, `Sidebar.drag.ts`: call sites into
   `fork/useSidebarProjectGrouping`, `fork/sidebarProjectItems`,
