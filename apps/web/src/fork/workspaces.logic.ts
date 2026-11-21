@@ -1,4 +1,8 @@
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import {
+  forkWorkspaceIdsFromTags,
+  forkWorkspaceTag,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 
 import type { ThreadStatusPill } from "../components/Sidebar.logic";
 import { closeTab, collectLeaves, findLeaf, findLeafByThreadKey } from "./chatPanes.logic";
@@ -90,4 +94,79 @@ export function withoutDraftTabs(layout: PaneLayout, draftKeys: readonly string[
     history,
     draftTabKeys: layout.draftTabKeys.filter((key) => !dropped.has(key)),
   };
+}
+
+/** Moves `id` before `beforeId` (last when null); unknown ids leave the list as is. */
+export function reorderWorkspaces<T extends { readonly id: string }>(
+  items: readonly T[],
+  id: string,
+  beforeId: string | null,
+): T[] {
+  const moving = items.find((item) => item.id === id);
+  if (!moving) return [...items];
+  const rest = items.filter((item) => item.id !== id);
+  const index = beforeId === null ? rest.length : rest.findIndex((item) => item.id === beforeId);
+  if (index < 0) return [...items];
+  return [...rest.slice(0, index), moving, ...rest.slice(index)];
+}
+
+export interface WorkspaceMembershipContext {
+  /** Workspace ids in the registry; tags naming any other id are ignored. */
+  readonly knownIds: ReadonlySet<string>;
+  /** Holds threads without a known workspace tag. */
+  readonly defaultId: string | null;
+  /** Thread tags by scoped thread key. */
+  readonly tagsByKey: ReadonlyMap<string, ReadonlyArray<string>>;
+}
+
+function knownWorkspaceIds(
+  threadKey: string | null,
+  context: WorkspaceMembershipContext,
+): string[] {
+  if (threadKey === null) return [];
+  return forkWorkspaceIdsFromTags(context.tagsByKey.get(threadKey)).filter((id) =>
+    context.knownIds.has(id),
+  );
+}
+
+/**
+ * The workspaces a thread belongs to. A subagent follows its root thread; a thread with
+ * no known workspace tag (untagged, or its workspace was deleted) belongs to the
+ * default one, so no thread is ever left without a workspace.
+ */
+export function threadWorkspaceIds(
+  threadKey: string,
+  rootThreadKey: string | null,
+  context: WorkspaceMembershipContext,
+): string[] {
+  const fromRoot = rootThreadKey === threadKey ? [] : knownWorkspaceIds(rootThreadKey, context);
+  const ids = fromRoot.length > 0 ? fromRoot : knownWorkspaceIds(threadKey, context);
+  if (ids.length > 0) return ids;
+  return context.defaultId === null ? [] : [context.defaultId];
+}
+
+export function isThreadInWorkspace(
+  workspaceId: string,
+  threadKey: string,
+  rootThreadKey: string | null,
+  context: WorkspaceMembershipContext,
+): boolean {
+  return threadWorkspaceIds(threadKey, rootThreadKey, context).includes(workspaceId);
+}
+
+/** Tag changes that make a thread a member of `targetId` only (no tag for the default). */
+export function moveThreadTagChanges(
+  currentTags: ReadonlyArray<string>,
+  targetId: string,
+  defaultId: string | null,
+): { readonly tag: string; readonly tagged: boolean }[] {
+  const target = targetId === defaultId ? null : forkWorkspaceTag(targetId);
+  // Add before removing, so a half-done move never leaves the thread without its target.
+  const changes: { tag: string; tagged: boolean }[] =
+    target !== null && !currentTags.includes(target) ? [{ tag: target, tagged: true }] : [];
+  for (const id of forkWorkspaceIdsFromTags(currentTags)) {
+    const tag = forkWorkspaceTag(id);
+    if (tag !== target) changes.push({ tag, tagged: false });
+  }
+  return changes;
 }

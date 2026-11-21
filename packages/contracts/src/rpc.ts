@@ -331,6 +331,12 @@ import {
 } from "./terminal.ts";
 import { TerminalMoveInput, TerminalMoveResult } from "./fork/terminalMove.ts";
 import {
+  ForkWorkspaceRegistry,
+  ForkWorkspacesSubscribeInput,
+  ForkWorkspacesUpdateInput,
+  ForkWorkspacesUpdateResult,
+} from "./fork/workspaces.ts";
+import {
   DiscoveredLocalServerList,
   ConfiguredLocalServerUrls,
   PreviewCloseInput,
@@ -570,6 +576,9 @@ export const WS_METHODS = {
   terminalClear: "terminal.clear",
   terminalClose: "terminal.close",
   terminalMove: "terminal.move", // fork
+  // Fork-only methods: the server-side workspace registry (fork/workspaces.ts).
+  forkWorkspacesSubscribe: "fork.workspaces.subscribe",
+  forkWorkspacesUpdate: "fork.workspaces.update",
 
   previewOpen: "preview.open",
   previewResize: "preview.resize",
@@ -2009,6 +2018,21 @@ const WsTerminalCloseRpc = Rpc.make(WS_METHODS.terminalClose, {
   error: Schema.Union([TerminalError, EnvironmentAuthorizationError]),
 });
 
+// Fork-only: streams the workspace registry; every change is pushed to all clients.
+const WsForkWorkspacesSubscribeRpc = Rpc.make(WS_METHODS.forkWorkspacesSubscribe, {
+  payload: ForkWorkspacesSubscribeInput,
+  success: ForkWorkspaceRegistry,
+  error: EnvironmentAuthorizationError,
+  stream: true,
+});
+
+// Fork-only: a stale expectedRevision is refused, so concurrent clients never overwrite.
+const WsForkWorkspacesUpdateRpc = Rpc.make(WS_METHODS.forkWorkspacesUpdate, {
+  payload: ForkWorkspacesUpdateInput,
+  success: ForkWorkspacesUpdateResult,
+  error: EnvironmentAuthorizationError,
+});
+
 // fork
 const WsTerminalMoveRpc = Rpc.make(WS_METHODS.terminalMove, {
   payload: TerminalMoveInput,
@@ -2725,6 +2749,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsTerminalClearRpc,
   WsTerminalCloseRpc,
   WsTerminalMoveRpc, // fork
+  WsForkWorkspacesSubscribeRpc, // fork
+  WsForkWorkspacesUpdateRpc, // fork
   WsSubscribeTerminalMetadataRpc,
   WsPreviewOpenRpc,
   WsPreviewResizeRpc,

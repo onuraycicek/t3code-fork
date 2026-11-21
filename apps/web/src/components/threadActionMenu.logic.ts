@@ -7,6 +7,8 @@ import { m, type MessageResolver } from "../i18n/messages";
 export type ThreadActionMenuId =
   | "find"
   | "open-in-split"
+  | "move-to-workspace"
+  | `fork-workspace:${string}`
   | "new-thread-on-branch"
   | "filter-by-project"
   | "open-project-in-new-window"
@@ -119,6 +121,12 @@ export interface ThreadActionMenuState {
   readonly hasCompletedRun: boolean;
   /** Offers "Open in split" (fork: split chat panes). Omitted on surfaces without it. */
   readonly canOpenInSplit?: boolean;
+  /** Fork: workspaces the thread can move to; `checked` marks its current ones. */
+  readonly workspaceTargets?: ReadonlyArray<{
+    readonly id: string;
+    readonly label: string;
+    readonly checked: boolean;
+  }>;
   readonly supports: {
     readonly settlement: boolean;
     readonly autoSettleOptOut: boolean;
@@ -181,6 +189,21 @@ export function buildThreadActionMenuItems(
     ...(state.canOpenInSplit
       ? // oxlint-disable-next-line t3code/no-untranslated-copy -- fork copy, English-only
         [{ id: "open-in-split" as const, label: "Open in split", icon: "panel-right" }]
+      : []),
+    ...(state.workspaceTargets && state.workspaceTargets.length > 1
+      ? [
+          {
+            id: "move-to-workspace" as const,
+            // oxlint-disable-next-line t3code/no-untranslated-copy -- fork copy, English-only
+            label: "Move to workspace",
+            icon: "layers",
+            children: state.workspaceTargets.map((target) => ({
+              id: `fork-workspace:${target.id}` as const,
+              label: target.label,
+              checked: target.checked,
+            })),
+          },
+        ]
       : []),
     ...(state.branch
       ? [

@@ -8,15 +8,7 @@ import type {
 } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useMessages } from "gt-react";
-import {
-  BotIcon,
-  ChevronRightIcon,
-  ImageIcon,
-  PencilIcon,
-  PlusIcon,
-  TerminalIcon,
-  XIcon,
-} from "lucide-react";
+import { BotIcon, ImageIcon, PencilIcon, PlusIcon, TerminalIcon, XIcon } from "lucide-react";
 import { lazy, Suspense, useRef, useState } from "react";
 
 import { resolveThreadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
@@ -25,6 +17,7 @@ import { ProjectMonogram } from "../components/ProjectMonogram";
 import {
   Menu,
   MenuItem,
+  MenuItemDetail,
   MenuPopup,
   MenuSeparator,
   MenuSub,
@@ -37,12 +30,23 @@ import { cn } from "../lib/utils";
 import { deriveProjectIdentity } from "../projectIdentity";
 import { useProject, useProjects, useThreadShells } from "../state/entities";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
-import { classifyStatusPill, isBackgroundWorkPill, type TabActivity } from "./workspaces.logic";
+import { useAtomValue } from "@effect/atom-react";
+import {
+  classifyStatusPill,
+  isBackgroundWorkPill,
+  threadWorkspaceIds,
+  type TabActivity,
+} from "./workspaces.logic";
+import { membershipContext, rootThreadKey } from "./useForkWorkspaceThreads";
+import { WorkspaceServerSync } from "./WorkspaceServerSync";
+import { forkEnvironmentKey, forkThreadTagsAtom } from "./workspaceServer";
 import { navigateToLayout, openWorkspaceTab, type RouteNavigate } from "./workspaceNavigation";
 import {
   createWorkspace,
   deleteWorkspace,
+  moveWorkspace,
   renameWorkspace,
+  setDefaultWorkspace,
   setWorkspaceIcon,
   switchWorkspace,
   useWorkspacesStore,
@@ -56,11 +60,13 @@ const ProjectIconPickerDialog = lazy(() =>
   })),
 );
 
+/** Drag payload type, so file drops and other drags are ignored. */
+const WORKSPACE_DRAG_TYPE = "application/x-t3-fork-workspace";
+
 /** Uploaded pictures are cropped to a square this size and kept inline. */
 const ICON_IMAGE_SIZE = 64;
 
 const EXPANDED_KEY = "t3code:fork-workspaces-expanded";
-const OPEN_WORKSPACES_KEY = "t3code:fork-workspaces-open";
 
 function readFlag(key: string, fallback: boolean): boolean {
   try {
@@ -68,15 +74,6 @@ function readFlag(key: string, fallback: boolean): boolean {
     return value === null ? fallback : value === "true";
   } catch {
     return fallback;
-  }
-}
-
-function readOpenIds(): string[] {
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(OPEN_WORKSPACES_KEY) ?? "[]");
-    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
   }
 }
 
@@ -120,8 +117,24 @@ export function WorkspaceSwitcher() {
   const busyIds = useWorkspacesStore((state) => state.busyIds);
   const shells = useThreadShells();
   const [expanded, setExpanded] = useState(() => readFlag(EXPANDED_KEY, true));
-  const [openIds, setOpenIds] = useState(readOpenIds);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // Drag to reorder: the dragged workspace and where it would land.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
+
+  const endDrag = () => {
+    setDragId(null);
+    setDropTarget(null);
+  };
+
+  const drop = () => {
+    if (dragId && dropTarget) {
+      const index = workspaces.findIndex((workspace) => workspace.id === dropTarget.id);
+      const beforeId = dropTarget.after ? (workspaces[index + 1]?.id ?? null) : dropTarget.id;
+      moveWorkspace(dragId, beforeId);
+    }
+    endDrag();
+  };
 
   const statusByKey = new Map<string, TabStatus>();
   for (const shell of shells) {
@@ -136,6 +149,38 @@ export function WorkspaceSwitcher() {
     });
   }
 
+  const defaultId = useWorkspacesStore((state) => state.defaultId);
+  const registryReady = useWorkspacesStore((state) => state.registryReady);
+  const threadTags = useAtomValue(
+    forkThreadTagsAtom(forkEnvironmentKey(shells.map((shell) => shell.environmentId))),
+  );
+  // Each workspace's activity: its member threads plus its open tabs, each thread once.
+  const membersByWorkspace = new Map<string, Set<string>>();
+  for (const workspace of workspaces) {
+    membersByWorkspace.set(
+      workspace.id,
+      new Set(workspace.tabs.map((tab) => scopedThreadKey(tab))),
+    );
+  }
+  if (registryReady && defaultId !== null) {
+    const context = membershipContext(
+      workspaces.map((workspace) => workspace.id),
+      defaultId,
+      threadTags,
+    );
+    for (const shell of shells) {
+      const key = scopedThreadKey({ environmentId: shell.environmentId, threadId: shell.id });
+      for (const id of threadWorkspaceIds(key, rootThreadKey(shell), context)) {
+        membersByWorkspace.get(id)?.add(key);
+      }
+    }
+  }
+  const activitiesOf = (workspaceId: string): TabActivity[] =>
+    [...(membersByWorkspace.get(workspaceId) ?? [])].flatMap((key) => {
+      const activity = statusByKey.get(key)?.activity;
+      return activity ? [activity] : [];
+    });
+
   const statusOf = (tab: ScopedThreadRef): TabStatus =>
     statusByKey.get(scopedThreadKey(tab)) ?? { title: "New thread", ...IDLE_TAB };
 
@@ -147,14 +192,6 @@ export function WorkspaceSwitcher() {
     } catch {}
   };
 
-  const toggleOpen = (id: string) => {
-    const next = openIds.includes(id) ? openIds.filter((entry) => entry !== id) : [...openIds, id];
-    setOpenIds(next);
-    try {
-      localStorage.setItem(OPEN_WORKSPACES_KEY, JSON.stringify(next));
-    } catch {}
-  };
-
   const addWorkspace = () => {
     navigateToLayout(createWorkspace(), navigate);
     setRenamingId(useWorkspacesStore.getState().activeId);
@@ -163,6 +200,7 @@ export function WorkspaceSwitcher() {
 
   return (
     <div className="px-2 pb-1">
+      <WorkspaceServerSync />
       <div className="flex items-center">
         <div className="min-w-0 flex-1">
           <CollapsibleSectionHeader expanded={expanded} onClick={toggle}>
@@ -186,11 +224,10 @@ export function WorkspaceSwitcher() {
               workspace={workspace}
               active={workspace.id === activeId}
               busy={busyIds.includes(workspace.id)}
-              open={openIds.includes(workspace.id)}
               renaming={renamingId === workspace.id}
               canDelete={workspaces.length > 1}
               statusOf={statusOf}
-              onToggleOpen={() => toggleOpen(workspace.id)}
+              activities={activitiesOf(workspace.id)}
               onSwitch={() => navigateToLayout(switchWorkspace(workspace.id), navigate)}
               onOpenTab={(tab) => openWorkspaceTab(workspace.id, tab, navigate)}
               onStartRename={() => setRenamingId(workspace.id)}
@@ -200,6 +237,20 @@ export function WorkspaceSwitcher() {
               }}
               onDelete={() => navigateToLayout(deleteWorkspace(workspace.id), navigate)}
               onSetIcon={(icon) => setWorkspaceIcon(workspace.id, icon)}
+              isDefault={workspace.id === defaultId}
+              onMakeDefault={() => setDefaultWorkspace(workspace.id)}
+              dragging={dragId === workspace.id}
+              dropEdge={
+                dragId !== null && dropTarget?.id === workspace.id && dragId !== workspace.id
+                  ? dropTarget.after
+                    ? "after"
+                    : "before"
+                  : null
+              }
+              onDragStart={() => setDragId(workspace.id)}
+              onDragOver={(after) => dragId !== null && setDropTarget({ id: workspace.id, after })}
+              onDragEnd={endDrag}
+              onDrop={drop}
             />
           ))}
         </ul>
@@ -212,28 +263,34 @@ function WorkspaceRow(props: {
   workspace: WorkspaceSummary;
   active: boolean;
   busy: boolean;
-  open: boolean;
   renaming: boolean;
   canDelete: boolean;
   statusOf: (tab: ScopedThreadRef) => TabStatus;
-  onToggleOpen: () => void;
+  /** Activity of every thread in the workspace (members and open tabs), for the badges. */
+  activities: ReadonlyArray<TabActivity>;
   onSwitch: () => void;
   onOpenTab: (tab: ScopedThreadRef) => void;
   onStartRename: () => void;
   onFinishRename: (name: string | null) => void;
   onDelete: () => void;
   onSetIcon: (icon: WorkspaceIcon | null) => void;
+  isDefault: boolean;
+  onMakeDefault: () => void;
+  dragging: boolean;
+  dropEdge: "before" | "after" | null;
+  onDragStart: () => void;
+  onDragOver: (after: boolean) => void;
+  onDragEnd: () => void;
+  onDrop: () => void;
 }) {
   const { workspace, active, busy } = props;
+  const headerRef = useRef<HTMLDivElement>(null);
   const [iconMenuOpen, setIconMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const statuses = workspace.tabs.map((tab) => ({ tab, status: props.statusOf(tab) }));
   const counts = new Map<TabActivity, number>();
-  for (const { status } of statuses) {
-    if (status.activity) counts.set(status.activity, (counts.get(status.activity) ?? 0) + 1);
-  }
-  const canOpen = workspace.tabs.length > 0;
-  const showTabs = canOpen && props.open;
+  for (const activity of props.activities) counts.set(activity, (counts.get(activity) ?? 0) + 1);
+  const showTabs = workspace.tabs.length > 0;
 
   if (props.renaming) {
     return (
@@ -255,25 +312,41 @@ function WorkspaceRow(props: {
   }
 
   return (
-    <li>
-      <div className="group/workspace relative flex items-center">
-        <button
-          type="button"
-          aria-label={
-            props.open ? `Hide tabs of ${workspace.name}` : `Show tabs of ${workspace.name}`
-          }
-          aria-expanded={showTabs}
-          disabled={!canOpen}
+    <li
+      className={cn("relative", props.dragging && "opacity-50")}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes(WORKSPACE_DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        const rect = headerRef.current?.getBoundingClientRect();
+        props.onDragOver(rect ? event.clientY > rect.top + rect.height / 2 : true);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.types.includes(WORKSPACE_DRAG_TYPE)) return;
+        event.preventDefault();
+        props.onDrop();
+      }}
+    >
+      {props.dropEdge ? (
+        <span
+          aria-hidden
           className={cn(
-            "flex size-5 shrink-0 items-center justify-center rounded text-sidebar-muted-foreground hover:text-sidebar-foreground",
-            !canOpen && "invisible",
+            "pointer-events-none absolute inset-x-1 z-10 h-0.5 rounded-full bg-primary",
+            props.dropEdge === "before" ? "-top-px" : "-bottom-px",
           )}
-          onClick={props.onToggleOpen}
-        >
-          <ChevronRightIcon
-            className={cn("size-3 transition-transform", showTabs && "rotate-90")}
-          />
-        </button>
+        />
+      ) : null}
+      <div
+        ref={headerRef}
+        draggable
+        className="group/workspace relative flex items-center"
+        onDragStart={(event) => {
+          event.dataTransfer.setData(WORKSPACE_DRAG_TYPE, workspace.id);
+          event.dataTransfer.effectAllowed = "move";
+          props.onDragStart();
+        }}
+        onDragEnd={props.onDragEnd}
+      >
         <button
           type="button"
           disabled={busy}
@@ -324,6 +397,8 @@ function WorkspaceRow(props: {
               onOpenChange={setIconMenuOpen}
               onChooseIcon={() => setPickerOpen(true)}
               onSetIcon={props.onSetIcon}
+              isDefault={props.isDefault}
+              onMakeDefault={props.onMakeDefault}
             />
             <button
               type="button"
@@ -348,7 +423,7 @@ function WorkspaceRow(props: {
       </div>
       {showTabs ? (
         <ul
-          className="mb-1 ml-[19px] flex flex-col border-l border-sidebar-border pl-1.5"
+          className="mb-1 ml-4 flex flex-col border-l border-sidebar-border pl-1.5"
           aria-label={`Tabs of ${workspace.name}`}
         >
           {statuses.map(({ tab, status }) => (
@@ -545,6 +620,8 @@ function WorkspaceIconMenu(props: {
   onOpenChange: (open: boolean) => void;
   onChooseIcon: () => void;
   onSetIcon: (icon: WorkspaceIcon | null) => void;
+  isDefault: boolean;
+  onMakeDefault: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const projects = useProjects();
@@ -602,11 +679,13 @@ function WorkspaceIconMenu(props: {
             </MenuSub>
           ) : null}
           {props.hasIcon ? (
-            <>
-              <MenuSeparator />
-              <MenuItem onClick={() => props.onSetIcon(null)}>Use name monogram</MenuItem>
-            </>
+            <MenuItem onClick={() => props.onSetIcon(null)}>Use name monogram</MenuItem>
           ) : null}
+          <MenuSeparator />
+          <MenuItem disabled={props.isDefault} onClick={props.onMakeDefault}>
+            {props.isDefault ? "Default workspace" : "Make default workspace"}
+            <MenuItemDetail>holds threads without a workspace</MenuItemDetail>
+          </MenuItem>
         </MenuPopup>
       </Menu>
     </>

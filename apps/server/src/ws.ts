@@ -208,6 +208,7 @@ import { invalidateSettingsSecrets } from "./sourceControl/sourceControlHostSecr
 import * as DatabaseStorage from "./persistence/DatabaseStorage.ts";
 import * as StorageCleanup from "./storageCleanup.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import * as ForkWorkspaceRegistry from "./fork/workspaceRegistry.ts";
 import { makePrepareTerminalLaunch } from "./workspace/restoreMissingWorktree.ts";
 import { terminalOutputStream, withOutputWindow } from "./terminal/OutputProtocol.ts";
 import { withSocketHeartbeat } from "./socketHeartbeat.ts";
@@ -1569,6 +1570,7 @@ export const layerWsRpc = (
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
+      const forkWorkspaces = yield* ForkWorkspaceRegistry.ForkWorkspaceRegistry; // fork
       const prepareTerminalLaunch = yield* makePrepareTerminalLaunch(
         threadManagement.getThreadShell,
       );
@@ -3487,6 +3489,8 @@ export const layerWsRpc = (
         [WS_METHODS.terminalClear]: (input) => terminalManager.clear(input),
         [WS_METHODS.terminalClose]: (input) => terminalManager.close(input),
         [WS_METHODS.terminalMove]: (input) => terminalManager.move(input), // fork
+        [WS_METHODS.forkWorkspacesSubscribe]: (_input) => forkWorkspaces.changes, // fork
+        [WS_METHODS.forkWorkspacesUpdate]: (input) => forkWorkspaces.update(input), // fork
         [WS_METHODS.terminalObserve]: (input) =>
           terminalOutputStream(
             (listener, registerCleanup) =>

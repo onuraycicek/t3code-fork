@@ -270,6 +270,8 @@ import { isSidebarProjectDropAllowed } from "../fork/sidebarProjectGroups.logic"
 import { isSidebarProjectListItem } from "../fork/sidebarProjectItems";
 import { useSidebarProjectGrouping } from "../fork/useSidebarProjectGrouping";
 import { WorkspaceSwitcher } from "../fork/WorkspaceSwitcher";
+import { useForkWorkspaceThreads } from "../fork/useForkWorkspaceThreads";
+import { forkWorkspaceMenuState, moveThreadToWorkspace } from "../fork/workspacesStore";
 import {
   composerDraftHasUserContent,
   DraftId,
@@ -1158,7 +1160,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     settings: projectGroupingSettings,
     canClearMissingScope: allProjectSnapshotsReady && allProjectConfigsReady,
   });
-  const threads = useQuietThreadShells();
+  const threads = useForkWorkspaceThreads(useQuietThreadShells()); // fork: workspace filter
   const promotingDraftThreadKeys = usePromotingDraftThreadKeys();
   const listedThreads =
     promotingDraftThreadKeys.length === 0
@@ -2787,6 +2789,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             buildThreadActionMenuItems({
+              ...forkWorkspaceMenuState(threadRef, thread), // fork
               canOpenInSplit:
                 useChatPanesStore.getState().root !== null ||
                 (routeThreadRefRef.current !== null &&
@@ -2837,6 +2840,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           !checkThreadOperations([thread], isThreadTriageAction(clicked.value))
         )
           return;
+        if (clicked.value?.startsWith("fork-workspace:")) {
+          void moveThreadToWorkspace(threadRef, clicked.value.slice("fork-workspace:".length)); // fork
+          return;
+        }
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
             clicked.value === "snooze:custom"
