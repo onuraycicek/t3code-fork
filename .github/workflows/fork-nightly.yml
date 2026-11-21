@@ -259,6 +259,19 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Building $version"
 
+      # Upstream's Apple Speech helper needs Xcode 26; the runner image ships it but
+      # defaults to an older one.
+      - name: Select Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$xcode" ]; then
+            echo "No Xcode 26 on this runner; installed:" >&2
+            ls -d /Applications/Xcode*.app >&2
+            exit 1
+          fi
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+
       - name: Build signed + notarized app
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
