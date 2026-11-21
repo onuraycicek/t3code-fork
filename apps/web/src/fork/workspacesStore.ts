@@ -1,5 +1,6 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import { ProjectIconOverride, type ScopedThreadRef } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 import { create } from "zustand";
 
 import { randomUUID } from "../lib/utils";
@@ -37,10 +38,41 @@ const PROJECT_SCOPE_URL_PARAM = "projectScope";
 const LEASE_HEARTBEAT_MS = 15_000;
 const LEASE_STALE_MS = 45_000;
 
+/** A workspace's picture; without one the row shows a monogram of its name. */
+export type WorkspaceIcon =
+  | { readonly kind: "override"; readonly icon: ProjectIconOverride }
+  | { readonly kind: "image"; readonly dataUrl: string }
+  | { readonly kind: "project"; readonly environmentId: string; readonly projectId: string };
+
+const decodeIconOverride = Schema.decodeUnknownOption(ProjectIconOverride);
+
+function decodeWorkspaceIcon(raw: unknown): WorkspaceIcon | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const value = raw as Record<string, unknown>;
+  if (value.kind === "image" && typeof value.dataUrl === "string") {
+    return value.dataUrl.startsWith("data:image/")
+      ? { kind: "image", dataUrl: value.dataUrl }
+      : undefined;
+  }
+  if (
+    value.kind === "project" &&
+    typeof value.environmentId === "string" &&
+    typeof value.projectId === "string"
+  ) {
+    return { kind: "project", environmentId: value.environmentId, projectId: value.projectId };
+  }
+  if (value.kind === "override") {
+    const icon = decodeIconOverride(value.icon);
+    return icon._tag === "Some" ? { kind: "override", icon: icon.value } : undefined;
+  }
+  return undefined;
+}
+
 export interface Workspace {
   readonly id: string;
   readonly name: string;
   readonly layout: PaneLayout;
+  readonly icon?: WorkspaceIcon;
 }
 
 interface StoredWorkspaces {
@@ -54,6 +86,7 @@ export interface WorkspaceSummary {
   readonly name: string;
   /** Tabs in layout order (never re-sorted by activity). */
   readonly tabs: readonly ScopedThreadRef[];
+  readonly icon?: WorkspaceIcon;
 }
 
 type Leases = Record<string, { readonly token: string; readonly at: number }>;
@@ -92,10 +125,16 @@ function readStored(): StoredWorkspaces {
     | undefined;
   const workspaces: Workspace[] = [];
   if (raw && Array.isArray(raw.workspaces)) {
-    for (const entry of raw.workspaces as { id?: unknown; name?: unknown; layout?: unknown }[]) {
+    for (const entry of raw.workspaces as {
+      id?: unknown;
+      name?: unknown;
+      layout?: unknown;
+      icon?: unknown;
+    }[]) {
       if (typeof entry?.id !== "string" || typeof entry.name !== "string") continue;
       const layout = decodePaneLayout(entry.layout, PANE_LAYOUT_VERSION) ?? EMPTY_PANE_LAYOUT;
-      workspaces.push({ id: entry.id, name: entry.name, layout });
+      const icon = decodeWorkspaceIcon(entry.icon);
+      workspaces.push({ id: entry.id, name: entry.name, layout, ...(icon ? { icon } : {}) });
     }
   }
   const mainActiveId = typeof raw?.mainActiveId === "string" ? raw.mainActiveId : null;
@@ -168,10 +207,11 @@ function releaseLease(): void {
 
 function publish(stored: StoredWorkspaces, activeId: string): void {
   useWorkspacesStore.setState({
-    workspaces: stored.workspaces.map(({ id, name, layout }) => ({
+    workspaces: stored.workspaces.map(({ id, name, layout, icon }) => ({
       id,
       name,
       tabs: layoutTabs(layout),
+      ...(icon ? { icon } : {}),
     })),
     activeId,
     busyIds: busyIdsFor(token),
@@ -306,6 +346,18 @@ export function createWorkspace(name?: string): PaneLayout | null {
     ],
   }));
   return switchWorkspace(id);
+}
+
+/** Sets (or with null clears) a workspace's picture. */
+export function setWorkspaceIcon(id: string, icon: WorkspaceIcon | null): void {
+  updateStored((stored) => ({
+    ...stored,
+    workspaces: stored.workspaces.map((workspace) => {
+      if (workspace.id !== id) return workspace;
+      const { icon: _previous, ...rest } = workspace;
+      return icon ? { ...rest, icon } : rest;
+    }),
+  }));
 }
 
 export function renameWorkspace(id: string, name: string): void {

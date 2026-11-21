@@ -39,13 +39,21 @@ export function layoutTabs(layout: PaneLayout): ScopedThreadRef[] {
 export type TabActivity = "wait" | "run" | "done" | "error";
 
 /**
+ * Upstream's muted "Waiting" pill: the run ended but subagents or awaited background
+ * work are still going, or the thread waits on another thread. Work is in progress.
+ */
+export function isBackgroundWorkPill(pill: ThreadStatusPill | null): boolean {
+  return pill !== null && pill.dotClass.includes("bg-sidebar-muted-foreground");
+}
+
+/**
  * Buckets a tab-strip status pill for the workspace list. Keyed on the pill's dot
- * colour so the list always matches the strip; "Waiting" (muted) is no activity.
+ * colour so the list always matches the strip; background work counts as working.
  */
 export function classifyStatusPill(pill: ThreadStatusPill | null): TabActivity | null {
   if (!pill) return null;
   const dot = pill.dotClass;
-  if (dot.includes("bg-sky")) return "run";
+  if (dot.includes("bg-sky") || isBackgroundWorkPill(pill)) return "run";
   if (dot.includes("bg-emerald")) return "done";
   if (dot.includes("bg-red")) return "error";
   if (dot.includes("bg-amber") || dot.includes("bg-indigo") || dot.includes("bg-violet")) {
