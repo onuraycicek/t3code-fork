@@ -2692,11 +2692,14 @@ describe("PreviewManager", () => {
         ) as unknown as typeof contents.debugger.sendCommand;
         fromId.mockReturnValue(contents);
         const manager = yield* PreviewManager.PreviewManager;
-        yield* manager.setMainWindow({
-          isDestroyed: () => false,
-          once: vi.fn(),
-          webContents: mainWebContents,
-        } as never);
+        yield* manager.registerAppWindow(
+          {
+            isDestroyed: () => false,
+            once: vi.fn(),
+            webContents: mainWebContents,
+          } as never,
+          { primary: true },
+        );
         const capturing = yield* Queue.unbounded<boolean>();
         yield* manager.subscribeStateChanges((_tabId, state) =>
           Queue.offer(capturing, state.capturing).pipe(Effect.asVoid),
