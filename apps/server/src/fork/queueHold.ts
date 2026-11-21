@@ -21,13 +21,16 @@ type HoldProjection = Pick<
   "runs" | "messages" | "providerThreads"
 >;
 
-/** A message the agent or server wrote to resume itself (background wake, delegated result). */
+/**
+ * A message the agent or server wrote to resume itself (background wake, delegated result).
+ * A message another thread sent through MCP is not this agent's wake and keeps its queue slot.
+ */
 function forkIsAgentWake(message: OrchestrationV2ConversationMessage | undefined): boolean {
   return (
     message !== undefined &&
     (message.notification !== undefined ||
       message.delegatedCompletion !== undefined ||
-      message.createdBy === "agent" ||
+      (message.createdBy === "agent" && message.creationSource !== "mcp") ||
       message.createdBy === "system")
   );
 }
