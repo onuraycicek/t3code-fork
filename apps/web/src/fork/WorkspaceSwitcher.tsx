@@ -9,7 +9,7 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { useMessages } from "gt-react";
 import { BotIcon, ImageIcon, PencilIcon, PlusIcon, TerminalIcon, XIcon } from "lucide-react";
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import { resolveThreadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
 import { ProjectFavicon, type ProjectFaviconProject } from "../components/ProjectFavicon";
@@ -26,6 +26,7 @@ import {
   MenuTrigger,
 } from "../components/ui/menu";
 import { CollapsibleSectionHeader } from "../components/ui/collapsible-section-header";
+import { ScrollArea } from "../components/ui/scroll-area";
 import { cn } from "../lib/utils";
 import { deriveProjectIdentity } from "../projectIdentity";
 import { useProject, useProjects, useThreadShells } from "../state/entities";
@@ -67,6 +68,28 @@ const WORKSPACE_DRAG_TYPE = "application/x-t3-fork-workspace";
 const ICON_IMAGE_SIZE = 64;
 
 const EXPANDED_KEY = "t3code:fork-workspaces-expanded";
+const HEIGHT_KEY = "t3code:fork-workspaces-height";
+/** Height of the workspace list until the user drags the divider. */
+const DEFAULT_LIST_HEIGHT = 260;
+const MIN_LIST_HEIGHT = 48;
+/** The thread list below always keeps at least this share of the window. */
+const MAX_LIST_SHARE = 0.75;
+
+function readHeight(): number | null {
+  try {
+    const value = Number(localStorage.getItem(HEIGHT_KEY));
+    return Number.isFinite(value) && value >= MIN_LIST_HEIGHT ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeHeight(height: number | null) {
+  try {
+    if (height === null) localStorage.removeItem(HEIGHT_KEY);
+    else localStorage.setItem(HEIGHT_KEY, String(Math.round(height)));
+  } catch {}
+}
 
 function readFlag(key: string, fallback: boolean): boolean {
   try {
@@ -118,6 +141,8 @@ export function WorkspaceSwitcher() {
   const shells = useThreadShells();
   const [expanded, setExpanded] = useState(() => readFlag(EXPANDED_KEY, true));
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [listHeight, setListHeight] = useState(readHeight);
+  const listRef = useRef<HTMLDivElement>(null);
   // Drag to reorder: the dragged workspace and where it would land.
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ id: string; after: boolean } | null>(null);
@@ -198,8 +223,51 @@ export function WorkspaceSwitcher() {
     if (!expanded) toggle();
   };
 
+  // The divider under the list sets its height; past the content height there is nothing to show.
+  const clampHeight = (height: number) => {
+    const content =
+      listRef.current?.querySelector("[data-slot=scroll-area-viewport]")?.scrollHeight ?? height;
+    const limit = Math.min(content, window.innerHeight * MAX_LIST_SHARE);
+    return Math.max(MIN_LIST_HEIGHT, Math.min(height, Math.max(limit, MIN_LIST_HEIGHT)));
+  };
+
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !listRef.current) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const startY = event.clientY;
+    const startHeight = listRef.current.getBoundingClientRect().height;
+    let latest = startHeight;
+    const move = (moveEvent: PointerEvent) => {
+      latest = clampHeight(startHeight + moveEvent.clientY - startY);
+      setListHeight(latest);
+    };
+    const end = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", end);
+      handle.removeEventListener("pointercancel", end);
+      writeHeight(latest);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  };
+
+  const nudgeHeight = (delta: number) => {
+    const current = listRef.current?.getBoundingClientRect().height ?? DEFAULT_LIST_HEIGHT;
+    const next = clampHeight(current + delta);
+    setListHeight(next);
+    writeHeight(next);
+  };
+
+  const resetHeight = () => {
+    setListHeight(null);
+    writeHeight(null);
+  };
+
   return (
-    <div className="px-2 pb-1">
+    <div className="shrink-0 px-2 pb-1">
       <WorkspaceServerSync />
       <div className="flex items-center">
         <div className="min-w-0 flex-1">
@@ -217,43 +285,71 @@ export function WorkspaceSwitcher() {
         </button>
       </div>
       {expanded ? (
-        <ul className="flex flex-col gap-px" aria-label="Workspaces">
-          {workspaces.map((workspace) => (
-            <WorkspaceRow
-              key={workspace.id}
-              workspace={workspace}
-              active={workspace.id === activeId}
-              busy={busyIds.includes(workspace.id)}
-              renaming={renamingId === workspace.id}
-              canDelete={workspaces.length > 1}
-              statusOf={statusOf}
-              activities={activitiesOf(workspace.id)}
-              onSwitch={() => navigateToLayout(switchWorkspace(workspace.id), navigate)}
-              onOpenTab={(tab) => openWorkspaceTab(workspace.id, tab, navigate)}
-              onStartRename={() => setRenamingId(workspace.id)}
-              onFinishRename={(name) => {
-                if (name !== null) renameWorkspace(workspace.id, name);
-                setRenamingId(null);
-              }}
-              onDelete={() => navigateToLayout(deleteWorkspace(workspace.id), navigate)}
-              onSetIcon={(icon) => setWorkspaceIcon(workspace.id, icon)}
-              isDefault={workspace.id === defaultId}
-              onMakeDefault={() => setDefaultWorkspace(workspace.id)}
-              dragging={dragId === workspace.id}
-              dropEdge={
-                dragId !== null && dropTarget?.id === workspace.id && dragId !== workspace.id
-                  ? dropTarget.after
-                    ? "after"
-                    : "before"
-                  : null
+        <>
+          <ScrollArea
+            ref={listRef}
+            scrollFade
+            className="h-auto"
+            style={{ maxHeight: listHeight ?? DEFAULT_LIST_HEIGHT }}
+          >
+            <ul className="flex flex-col gap-px" aria-label="Workspaces">
+              {workspaces.map((workspace) => (
+                <WorkspaceRow
+                  key={workspace.id}
+                  workspace={workspace}
+                  active={workspace.id === activeId}
+                  busy={busyIds.includes(workspace.id)}
+                  renaming={renamingId === workspace.id}
+                  canDelete={workspaces.length > 1}
+                  statusOf={statusOf}
+                  activities={activitiesOf(workspace.id)}
+                  onSwitch={() => navigateToLayout(switchWorkspace(workspace.id), navigate)}
+                  onOpenTab={(tab) => openWorkspaceTab(workspace.id, tab, navigate)}
+                  onStartRename={() => setRenamingId(workspace.id)}
+                  onFinishRename={(name) => {
+                    if (name !== null) renameWorkspace(workspace.id, name);
+                    setRenamingId(null);
+                  }}
+                  onDelete={() => navigateToLayout(deleteWorkspace(workspace.id), navigate)}
+                  onSetIcon={(icon) => setWorkspaceIcon(workspace.id, icon)}
+                  isDefault={workspace.id === defaultId}
+                  onMakeDefault={() => setDefaultWorkspace(workspace.id)}
+                  dragging={dragId === workspace.id}
+                  dropEdge={
+                    dragId !== null && dropTarget?.id === workspace.id && dragId !== workspace.id
+                      ? dropTarget.after
+                        ? "after"
+                        : "before"
+                      : null
+                  }
+                  onDragStart={() => setDragId(workspace.id)}
+                  onDragOver={(after) =>
+                    dragId !== null && setDropTarget({ id: workspace.id, after })
+                  }
+                  onDragEnd={endDrag}
+                  onDrop={drop}
+                />
+              ))}
+            </ul>
+          </ScrollArea>
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize workspaces"
+            tabIndex={0}
+            className="group/resize -mx-2 flex h-2 cursor-row-resize items-center px-2 outline-none"
+            onPointerDown={startResize}
+            onDoubleClick={resetHeight}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                event.preventDefault();
+                nudgeHeight(event.key === "ArrowUp" ? -16 : 16);
               }
-              onDragStart={() => setDragId(workspace.id)}
-              onDragOver={(after) => dragId !== null && setDropTarget({ id: workspace.id, after })}
-              onDragEnd={endDrag}
-              onDrop={drop}
-            />
-          ))}
-        </ul>
+            }}
+          >
+            <div className="h-px w-full bg-sidebar-border transition-colors group-hover/resize:bg-sidebar-foreground/40 group-focus-visible/resize:bg-ring group-active/resize:bg-sidebar-foreground/40" />
+          </div>
+        </>
       ) : null}
     </div>
   );
