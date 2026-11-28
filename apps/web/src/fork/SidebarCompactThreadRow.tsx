@@ -7,6 +7,7 @@ import {
   CircleDotDashedIcon,
   MessageCircleQuestionIcon,
   ShieldQuestionIcon,
+  UnplugIcon,
   UserRoundIcon,
   XIcon,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip"
 import { cn } from "../lib/utils";
 
 export type CompactRowStatusIcon =
+  | "connection"
   | "working"
   | "waiting"
   | "input"
@@ -79,7 +81,9 @@ export function SidebarCompactThreadRow(props: {
               data-compact-row-status={icon ?? (props.isUnread ? "unread" : "idle")}
               className="flex size-4 shrink-0 items-center justify-center"
             >
-              {icon === "working" ? (
+              {icon === "connection" ? (
+                <UnplugIcon aria-hidden className={iconClass} />
+              ) : icon === "working" ? (
                 <CircleDashedIcon aria-hidden className={iconClass} />
               ) : icon === "waiting" ? (
                 <CircleDotDashedIcon aria-hidden className={iconClass} />
